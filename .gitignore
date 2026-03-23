@@ -7,3 +7,4 @@ build/
 *.log
 *.xcodeproj/
 Config/*-Info.plist
+PRD.md
