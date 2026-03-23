@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Release
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Run tests
+        run: |
+          xcodebuild \
+            -project AutoFrameCam.xcodeproj \
+            -scheme "AutoFrame Cam" \
+            -destination "platform=macOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            test
+
+      - name: Build Release
+        run: |
+          xcodebuild \
+            -project AutoFrameCam.xcodeproj \
+            -scheme "AutoFrame Cam" \
+            -configuration Release \
+            -destination "platform=macOS" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package app
+        run: |
+          cd "build/Build/Products/Release"
+          ditto -c -k --keepParent "AutoFrame Cam.app" Reframe.zip
+
+      - name: Build CLI
+        run: |
+          xcodebuild \
+            -project AutoFrameCam.xcodeproj \
+            -scheme autoframe-cam \
+            -configuration Release \
+            -destination "platform=macOS" \
+            -derivedDataPath build-cli \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Package CLI
+        run: |
+          mkdir -p staging
+          cp "build-cli/Build/Products/Release/autoframe-cam" staging/reframe
+          cd staging && tar czf ../reframe-cli.tar.gz reframe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/Build/Products/Release/Reframe.zip
+            reframe-cli.tar.gz

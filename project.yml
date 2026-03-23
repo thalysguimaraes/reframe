@@ -1,0 +1,141 @@
+name: AutoFrameCam
+options:
+  bundleIdPrefix: dev.autoframe
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    SWIFT_VERSION: 6.0
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MACOSX_DEPLOYMENT_TARGET: 13.0
+    DEVELOPMENT_TEAM: B27B4ED4CL
+    CODE_SIGN_STYLE: Automatic
+targets:
+  AutoFrameCore:
+    type: framework.static
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Sources/Core
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCore
+        PRODUCT_NAME: AutoFrameCore
+        DEFINES_MODULE: YES
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: AVFoundation.framework
+      - sdk: Vision.framework
+      - sdk: CoreImage.framework
+      - sdk: CoreMedia.framework
+      - sdk: CoreVideo.framework
+      - sdk: CoreGraphics.framework
+
+  AutoFrameCameraExtension:
+    type: system-extension
+    platform: macOS
+    deploymentTarget: "13.0"
+    productName: AutoFrameCameraExtension
+    sources:
+      - path: Sources/CameraExtension
+    info:
+      path: Config/AutoFrameCameraExtension-Info.plist
+      properties:
+        NSSystemExtensionUsageDescription: AutoFrame Cam installs a virtual camera extension so meeting apps can use the reframed feed.
+        CMIOExtension:
+          CMIOExtensionMachServiceName: $(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCam.CameraExtension
+        PRODUCT_NAME: AutoFrameCameraExtension
+        CODE_SIGN_ENTITLEMENTS: Config/AutoFrameCameraExtension.entitlements
+        ENABLE_APP_SANDBOX: YES
+    dependencies:
+      - target: AutoFrameCore
+      - sdk: CoreMediaIO.framework
+      - sdk: AVFoundation.framework
+      - sdk: Vision.framework
+      - sdk: CoreImage.framework
+      - sdk: CoreVideo.framework
+      - sdk: IOKit.framework
+
+  AutoFrameCam:
+    type: application
+    platform: macOS
+    deploymentTarget: "13.0"
+    productName: AutoFrame Cam
+    sources:
+      - path: Sources/App
+    info:
+      path: Config/AutoFrameCam-Info.plist
+      properties:
+        NSCameraUsageDescription: AutoFrame Cam needs camera access to preview and configure your selected webcam.
+        NSSystemExtensionUsageDescription: AutoFrame Cam installs a virtual camera extension so meeting apps can use the reframed feed.
+        LSApplicationCategoryType: public.app-category.productivity
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCam
+        PRODUCT_NAME: AutoFrame Cam
+        CODE_SIGN_ENTITLEMENTS: Config/AutoFrameCam.entitlements
+        ENABLE_APP_SANDBOX: YES
+    dependencies:
+      - target: AutoFrameCore
+      - target: AutoFrameCameraExtension
+        embed: true
+      - sdk: SwiftUI.framework
+      - sdk: AppKit.framework
+      - sdk: AVFoundation.framework
+      - sdk: SystemExtensions.framework
+
+  autoframe-cam:
+    type: tool
+    platform: macOS
+    deploymentTarget: "13.0"
+    productName: autoframe-cam
+    sources:
+      - path: Sources/CLI
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.autoframe-cam
+        PRODUCT_NAME: autoframe-cam
+    dependencies:
+      - target: AutoFrameCore
+      - sdk: AVFoundation.framework
+
+  AutoFrameCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "13.0"
+    sources:
+      - path: Tests/AutoFrameCoreTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: AutoFrameCore
+
+schemes:
+  AutoFrame Cam:
+    build:
+      targets:
+        AutoFrameCam: all
+        AutoFrameCameraExtension: all
+        AutoFrameCore: all
+    test:
+      targets:
+        - AutoFrameCoreTests
+    run:
+      config: Debug
+  autoframe-cam:
+    build:
+      targets:
+        autoframe-cam: all
+        AutoFrameCore: all
+    test:
+      targets:
+        - AutoFrameCoreTests
+    run:
+      config: Debug
