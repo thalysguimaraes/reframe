@@ -136,6 +136,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var detectionStride: Int
     public var lostFaceHoldFrames: Int
     public var confidenceThreshold: Float
+    public var portraitModeEnabled: Bool
+    public var portraitBlurStrength: Double
 
     public init(
         cameraID: String? = nil,
@@ -147,7 +149,9 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         trackingEnabled: Bool = true,
         detectionStride: Int = 2,
         lostFaceHoldFrames: Int = 24,
-        confidenceThreshold: Float = 0.4
+        confidenceThreshold: Float = 0.4,
+        portraitModeEnabled: Bool = false,
+        portraitBlurStrength: Double = 0.5
     ) {
         self.cameraID = cameraID
         self.outputResolution = outputResolution
@@ -159,6 +163,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         self.detectionStride = detectionStride
         self.lostFaceHoldFrames = lostFaceHoldFrames
         self.confidenceThreshold = confidenceThreshold
+        self.portraitModeEnabled = portraitModeEnabled
+        self.portraitBlurStrength = portraitBlurStrength
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -172,6 +178,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         case detectionStride
         case lostFaceHoldFrames
         case confidenceThreshold
+        case portraitModeEnabled
+        case portraitBlurStrength
     }
 
     public init(from decoder: Decoder) throws {
@@ -187,6 +195,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         detectionStride = try container.decodeIfPresent(Int.self, forKey: .detectionStride) ?? 2
         lostFaceHoldFrames = try container.decodeIfPresent(Int.self, forKey: .lostFaceHoldFrames) ?? 24
         confidenceThreshold = try container.decodeIfPresent(Float.self, forKey: .confidenceThreshold) ?? 0.4
+        portraitModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .portraitModeEnabled) ?? false
+        portraitBlurStrength = try container.decodeIfPresent(Double.self, forKey: .portraitBlurStrength) ?? 0.5
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -201,6 +211,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         try container.encode(detectionStride, forKey: .detectionStride)
         try container.encode(lostFaceHoldFrames, forKey: .lostFaceHoldFrames)
         try container.encode(confidenceThreshold, forKey: .confidenceThreshold)
+        try container.encode(portraitModeEnabled, forKey: .portraitModeEnabled)
+        try container.encode(portraitBlurStrength, forKey: .portraitBlurStrength)
     }
 
     public static let `default` = AutoFrameSettings()

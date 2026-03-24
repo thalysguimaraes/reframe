@@ -16,6 +16,8 @@ struct SidebarView: View {
                 Divider()
                 ZoomSectionView(model: model)
                 Divider()
+                PortraitSectionView(model: model)
+                Divider()
                 VirtualCameraSectionView(model: model)
             }
             .padding(16)

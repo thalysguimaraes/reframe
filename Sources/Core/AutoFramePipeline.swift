@@ -12,6 +12,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
     private let faceStabilizer = FaceObservationStabilizer()
     private let cropEngine = CropEngine()
     private let reframer = PixelBufferReframer()
+    private let portraitCompositor = PortraitCompositor()
     private let processingQueue = DispatchQueue(label: "dev.autoframe.pipeline.processing", qos: .userInitiated)
     private let sessionQueue = DispatchQueue(label: "dev.autoframe.pipeline.session", qos: .userInitiated)
 
@@ -67,6 +68,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
         session.outputs.forEach { session.removeOutput($0) }
         cropEngine.reset()
         faceStabilizer.reset()
+        portraitCompositor.reset()
         currentCameraID = nil
         frameIndex = 0
         lastDetectedFace = nil
@@ -197,6 +199,17 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
             return
         }
 
+        // Portrait mode: apply person segmentation + background blur on the reframed output.
+        let outputBuffer: CVPixelBuffer
+        if settings.portraitModeEnabled {
+            outputBuffer = portraitCompositor.apply(
+                to: reframedBuffer,
+                blurStrength: settings.portraitBlurStrength
+            ) ?? reframedBuffer
+        } else {
+            outputBuffer = reframedBuffer
+        }
+
         update(window: &outputFPSWindow, now: now)
 
         let stats = FrameStatistics(
@@ -215,7 +228,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
 
         onProcessedFrame?(
             ProcessedFrame(
-                pixelBuffer: reframedBuffer,
+                pixelBuffer: outputBuffer,
                 cropRect: cropRect,
                 detectedFace: face,
                 statistics: stats

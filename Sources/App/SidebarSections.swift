@@ -139,6 +139,44 @@ struct ZoomSectionView: View {
     }
 }
 
+// MARK: - Portrait
+
+struct PortraitSectionView: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SidebarSectionHeader(title: "Portrait", icon: "person.and.background.dotted")
+
+            Toggle("Background blur", isOn: $model.portraitModeEnabled)
+                .toggleStyle(.switch)
+                .onChange(of: model.portraitModeEnabled) { _ in
+                    model.persistSettings()
+                }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Blur strength")
+                    Spacer()
+                    Text(model.portraitBlurLabel)
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+
+                Slider(value: $model.portraitBlurStrength, in: 0 ... 1, step: 0.05)
+                    .onChange(of: model.portraitBlurStrength) { _ in
+                        model.persistSettings()
+                    }
+
+                Text("Blurs the background while keeping you sharp.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .disabled(!model.portraitModeEnabled)
+        }
+    }
+}
+
 // MARK: - Virtual Camera
 
 struct VirtualCameraSectionView: View {

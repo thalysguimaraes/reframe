@@ -12,6 +12,8 @@ final class AppModel: ObservableObject {
     @Published var smoothing: Double
     @Published var zoomStrength: Double
     @Published var trackingEnabled: Bool
+    @Published var portraitModeEnabled: Bool
+    @Published var portraitBlurStrength: Double
     @Published var previewImage: CGImage?
     @Published var stats: FrameStatistics
     @Published var statusMessage = "Ready."
@@ -32,6 +34,8 @@ final class AppModel: ObservableObject {
         self.smoothing = settings.smoothing
         self.zoomStrength = settings.zoomStrength
         self.trackingEnabled = settings.trackingEnabled
+        self.portraitModeEnabled = settings.portraitModeEnabled
+        self.portraitBlurStrength = settings.portraitBlurStrength
         self.stats = statsStore.load() ?? .empty
         self.deadZone = settings.deadZone
         refreshCameras()
@@ -45,8 +49,21 @@ final class AppModel: ObservableObject {
             smoothing: smoothing,
             zoomStrength: zoomStrength,
             deadZone: deadZone,
-            trackingEnabled: trackingEnabled
+            trackingEnabled: trackingEnabled,
+            portraitModeEnabled: portraitModeEnabled,
+            portraitBlurStrength: portraitBlurStrength
         )
+    }
+
+    var portraitBlurLabel: String {
+        switch portraitBlurStrength {
+        case ..<0.34:
+            return "Subtle"
+        case ..<0.67:
+            return "Medium"
+        default:
+            return "Strong"
+        }
     }
 
     var zoomLabel: String {
