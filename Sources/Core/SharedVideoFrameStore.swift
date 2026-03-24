@@ -22,7 +22,7 @@ public final class SharedVideoFrameStore: @unchecked Sendable {
     public static let shared = SharedVideoFrameStore()
 
     private let lock = NSLock()
-    private let renderContext = CIContext()
+    private let renderContext = CIContext(options: [.cacheIntermediates: false, .useSoftwareRenderer: false])
     private let retainedBufferLimit = 6
     private let notificationName = "dev.autoframe.AutoFrameCam.latest-frame"
 
@@ -182,6 +182,10 @@ public final class SharedVideoFrameStore: @unchecked Sendable {
     }
 
     private func makeShareableBuffer(from pixelBuffer: CVPixelBuffer) -> CVPixelBuffer? {
+        if let surface = CVPixelBufferGetIOSurface(pixelBuffer)?.takeUnretainedValue(), IOSurfaceGetID(surface) != 0 {
+            return pixelBuffer
+        }
+
         let spec = PublishedBufferSpec(
             width: CVPixelBufferGetWidth(pixelBuffer),
             height: CVPixelBufferGetHeight(pixelBuffer),

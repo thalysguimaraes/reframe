@@ -4,7 +4,7 @@ import CoreVideo
 import Foundation
 
 public final class PixelBufferReframer {
-    private let context = CIContext()
+    private let context = CIContext(options: [.cacheIntermediates: false, .useSoftwareRenderer: false])
     private var pool: CVPixelBufferPool?
     private var poolSize: CGSize = .zero
 
@@ -52,7 +52,9 @@ public final class PixelBufferReframer {
             kCVPixelBufferWidthKey: Int(size.width),
             kCVPixelBufferHeightKey: Int(size.height),
             kCVPixelBufferPixelFormatTypeKey: Int(kCVPixelFormatType_32BGRA),
-            kCVPixelBufferIOSurfacePropertiesKey: [:]
+            kCVPixelBufferIOSurfacePropertiesKey: [
+                "IOSurfaceIsGlobal" as CFString: true,
+            ],
         ]
 
         var bufferPool: CVPixelBufferPool?
@@ -60,4 +62,3 @@ public final class PixelBufferReframer {
         return bufferPool
     }
 }
-

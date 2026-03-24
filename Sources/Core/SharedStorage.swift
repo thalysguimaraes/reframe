@@ -102,4 +102,29 @@ public final class SharedStatsStore: @unchecked Sendable {
         guard let data = try? encoder.encode(stats) else { return }
         try? data.write(to: SharedStorage.statsURL, options: .atomic)
     }
+
+    public func update(minimumInterval: TimeInterval = 1.0, _ mutate: (inout FrameStatistics) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard Date().timeIntervalSince(lastPersistDate) >= minimumInterval else {
+            return
+        }
+
+        var stats: FrameStatistics
+        if
+            let data = try? Data(contentsOf: SharedStorage.statsURL),
+            let decoded = try? decoder.decode(FrameStatistics.self, from: data)
+        {
+            stats = decoded
+        } else {
+            stats = .empty
+        }
+
+        mutate(&stats)
+
+        lastPersistDate = Date()
+        guard let data = try? encoder.encode(stats) else { return }
+        try? data.write(to: SharedStorage.statsURL, options: .atomic)
+    }
 }

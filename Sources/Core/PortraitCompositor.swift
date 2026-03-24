@@ -30,17 +30,18 @@ public final class PortraitCompositor {
 
     // MARK: - State
 
-    private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+    private let ciContext = CIContext(options: [.cacheIntermediates: false, .useSoftwareRenderer: false])
+    private let segmentationRequest = VNGeneratePersonSegmentationRequest()
     private var lastMask: CIImage?
     private var framesSinceSegmentation = 0
-
-    /// Run segmentation every N frames to save GPU/ANE budget.
-    /// Reuse the previous mask on skipped frames.
-    private let segmentationStride = 2
+    private var pool: CVPixelBufferPool?
+    private var poolSize: CGSize = .zero
 
     // MARK: - Public
 
-    public init() {}
+    public init() {
+        segmentationRequest.outputPixelFormat = kCVPixelFormatType_OneComponent8
+    }
 
     /// Resets cached mask state. Call when the pipeline restarts or settings change
     /// in a way that invalidates the mask (e.g. camera switch).
@@ -56,13 +57,17 @@ public final class PortraitCompositor {
     ///   - blurStrength: User-facing 0…1 value controlling blur intensity.
     /// - Returns: A new pixel buffer with the person sharp and background blurred,
     ///   or `nil` if compositing fails (caller should use the original buffer).
-    public func apply(to pixelBuffer: CVPixelBuffer, blurStrength: Double) -> CVPixelBuffer? {
+    public func apply(
+        to pixelBuffer: CVPixelBuffer,
+        blurStrength: Double,
+        profile: AdaptiveProcessingProfile
+    ) -> CVPixelBuffer? {
         framesSinceSegmentation += 1
 
-        let needsSegmentation = framesSinceSegmentation >= segmentationStride || lastMask == nil
+        let needsSegmentation = framesSinceSegmentation >= profile.segmentationStride || lastMask == nil
         if needsSegmentation {
             framesSinceSegmentation = 0
-            if let newMask = generatePersonMask(from: pixelBuffer) {
+            if let newMask = generatePersonMask(from: pixelBuffer, quality: profile.segmentationQuality) {
                 lastMask = newMask
             }
             // If segmentation fails, keep using lastMask (which may be nil on first frame).
@@ -78,19 +83,17 @@ public final class PortraitCompositor {
 
     // MARK: - Segmentation
 
-    private func generatePersonMask(from pixelBuffer: CVPixelBuffer) -> CIImage? {
-        let request = VNGeneratePersonSegmentationRequest()
-        request.qualityLevel = .accurate
-
+    private func generatePersonMask(from pixelBuffer: CVPixelBuffer, quality: SegmentationQuality) -> CIImage? {
+        segmentationRequest.qualityLevel = quality.visionQualityLevel
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
         do {
-            try handler.perform([request])
+            try handler.perform([segmentationRequest])
         } catch {
             NSLog("[AutoFrame] Person segmentation failed: %@", "\(error)")
             return nil
         }
 
-        guard let result = request.results?.first else {
+        guard let result = segmentationRequest.results?.first else {
             return nil
         }
         let maskBuffer = result.pixelBuffer
@@ -153,21 +156,54 @@ public final class PortraitCompositor {
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
 
-        var outputBuffer: CVPixelBuffer?
-        let attrs: [NSString: Any] = [
-            kCVPixelBufferWidthKey: width,
-            kCVPixelBufferHeightKey: height,
-            kCVPixelBufferPixelFormatTypeKey: Int(kCVPixelFormatType_32BGRA),
-            kCVPixelBufferIOSurfacePropertiesKey: [:] as [String: Any],
-        ]
-        guard CVPixelBufferCreate(kCFAllocatorDefault, width, height,
-                                   kCVPixelFormatType_32BGRA, attrs as CFDictionary,
-                                   &outputBuffer) == kCVReturnSuccess,
-              let output = outputBuffer else {
+        guard let output = makePixelBuffer(size: CGSize(width: width, height: height)) else {
             return nil
         }
 
         ciContext.render(composited, to: output)
         return output
+    }
+
+    private func makePixelBuffer(size: CGSize) -> CVPixelBuffer? {
+        if pool == nil || poolSize != size {
+            poolSize = size
+            pool = createPool(size: size)
+        }
+
+        guard let pool else { return nil }
+
+        var outputBuffer: CVPixelBuffer?
+        guard CVPixelBufferPoolCreatePixelBuffer(kCFAllocatorDefault, pool, &outputBuffer) == kCVReturnSuccess else {
+            return nil
+        }
+        return outputBuffer
+    }
+
+    private func createPool(size: CGSize) -> CVPixelBufferPool? {
+        let attributes: [NSString: Any] = [
+            kCVPixelBufferWidthKey: Int(size.width),
+            kCVPixelBufferHeightKey: Int(size.height),
+            kCVPixelBufferPixelFormatTypeKey: Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferIOSurfacePropertiesKey: [
+                "IOSurfaceIsGlobal" as CFString: true,
+            ],
+        ]
+
+        var bufferPool: CVPixelBufferPool?
+        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attributes as CFDictionary, &bufferPool)
+        return bufferPool
+    }
+}
+
+private extension SegmentationQuality {
+    var visionQualityLevel: VNGeneratePersonSegmentationRequest.QualityLevel {
+        switch self {
+        case .accurate:
+            return .accurate
+        case .balanced:
+            return .balanced
+        case .fast:
+            return .fast
+        }
     }
 }

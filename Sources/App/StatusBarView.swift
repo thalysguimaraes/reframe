@@ -6,19 +6,34 @@ struct StatusBarView: View {
     var body: some View {
         HStack(spacing: 16) {
             HStack(spacing: 4) {
-                Text("In")
+                Text("Capture")
                     .foregroundStyle(.secondary)
-                Text("\(model.stats.inputFPS, format: .number.precision(.fractionLength(1))) fps")
+                Text("\(model.stats.captureFPS, format: .number.precision(.fractionLength(1))) fps")
             }
             HStack(spacing: 4) {
-                Text("Out")
+                Text("Process")
                     .foregroundStyle(.secondary)
-                Text("\(model.stats.outputFPS, format: .number.precision(.fractionLength(1))) fps")
+                Text("\(model.stats.processingFPS, format: .number.precision(.fractionLength(1))) fps")
+            }
+            HStack(spacing: 4) {
+                Text("Preview")
+                    .foregroundStyle(.secondary)
+                Text("\(model.previewFPS, format: .number.precision(.fractionLength(1))) fps")
+            }
+            HStack(spacing: 4) {
+                Text("Relay")
+                    .foregroundStyle(.secondary)
+                Text("\(model.stats.relayFPS, format: .number.precision(.fractionLength(1))) fps")
             }
             HStack(spacing: 4) {
                 Text("Face")
                     .foregroundStyle(.secondary)
                 Text("\(model.stats.faceConfidence, format: .number.precision(.fractionLength(2)))")
+            }
+            HStack(spacing: 4) {
+                Text("Mode")
+                    .foregroundStyle(.secondary)
+                Text(model.stats.adaptiveQualityActive ? "adaptive" : "full")
             }
             HStack(spacing: 4) {
                 Text("Crop")

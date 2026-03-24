@@ -106,10 +106,15 @@ func printStats() {
 
     print("""
     timestamp: \(stats.timestamp)
-    input_fps: \(String(format: "%.1f", stats.inputFPS))
-    output_fps: \(String(format: "%.1f", stats.outputFPS))
+    capture_fps: \(String(format: "%.1f", stats.captureFPS))
+    processing_fps: \(String(format: "%.1f", stats.processingFPS))
+    relay_fps: \(String(format: "%.1f", stats.relayFPS))
+    target_fps: \(String(format: "%.1f", stats.targetFPS))
     face_confidence: \(String(format: "%.2f", stats.faceConfidence))
     crop_coverage: \(String(format: "%.2f", stats.cropCoverage * 100))%
+    adaptive_quality: \(stats.adaptiveQualityActive ? "on" : "off")
+    detection_stride: \(stats.detectionStride)
+    segmentation_stride: \(stats.segmentationStride)
     source: \(stats.sourceWidth)x\(stats.sourceHeight)
     output: \(stats.outputWidth)x\(stats.outputHeight)
     """)

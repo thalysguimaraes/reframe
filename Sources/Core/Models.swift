@@ -112,8 +112,25 @@ public enum OutputResolution: String, CaseIterable, Codable, Identifiable, Senda
         }
     }
 
+    public var preferredFrameRate: Double {
+        60
+    }
+
+    public var fallbackFrameRate: Double {
+        30
+    }
+
+    public var supportedFrameRates: [Double] {
+        [preferredFrameRate, fallbackFrameRate]
+    }
+
     public var frameDuration: CMTime {
-        CMTime(value: 1, timescale: 30)
+        frameDuration(for: preferredFrameRate)
+    }
+
+    public func frameDuration(for frameRate: Double) -> CMTime {
+        let sanitizedFrameRate = max(frameRate, 1)
+        return CMTimeMakeWithSeconds(1 / sanitizedFrameRate, preferredTimescale: 60_000)
     }
 
     public var aspectRatio: CGFloat {
@@ -123,6 +140,14 @@ public enum OutputResolution: String, CaseIterable, Codable, Identifiable, Senda
     public var displayName: String {
         rawValue
     }
+}
+
+public enum PerformancePolicy: String, CaseIterable, Codable, Identifiable, Sendable {
+    case adaptive
+    case fixedQuality
+    case disableHeavyModes
+
+    public var id: String { rawValue }
 }
 
 public struct AutoFrameSettings: Codable, Equatable, Sendable {
@@ -138,6 +163,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var confidenceThreshold: Float
     public var portraitModeEnabled: Bool
     public var portraitBlurStrength: Double
+    public var performancePolicy: PerformancePolicy
 
     public init(
         cameraID: String? = nil,
@@ -151,7 +177,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         lostFaceHoldFrames: Int = 24,
         confidenceThreshold: Float = 0.4,
         portraitModeEnabled: Bool = false,
-        portraitBlurStrength: Double = 0.5
+        portraitBlurStrength: Double = 0.5,
+        performancePolicy: PerformancePolicy = .adaptive
     ) {
         self.cameraID = cameraID
         self.outputResolution = outputResolution
@@ -165,6 +192,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         self.confidenceThreshold = confidenceThreshold
         self.portraitModeEnabled = portraitModeEnabled
         self.portraitBlurStrength = portraitBlurStrength
+        self.performancePolicy = performancePolicy
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -180,6 +208,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         case confidenceThreshold
         case portraitModeEnabled
         case portraitBlurStrength
+        case performancePolicy
     }
 
     public init(from decoder: Decoder) throws {
@@ -197,6 +226,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         confidenceThreshold = try container.decodeIfPresent(Float.self, forKey: .confidenceThreshold) ?? 0.4
         portraitModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .portraitModeEnabled) ?? false
         portraitBlurStrength = try container.decodeIfPresent(Double.self, forKey: .portraitBlurStrength) ?? 0.5
+        performancePolicy = try container.decodeIfPresent(PerformancePolicy.self, forKey: .performancePolicy) ?? .adaptive
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -213,6 +243,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         try container.encode(confidenceThreshold, forKey: .confidenceThreshold)
         try container.encode(portraitModeEnabled, forKey: .portraitModeEnabled)
         try container.encode(portraitBlurStrength, forKey: .portraitBlurStrength)
+        try container.encode(performancePolicy, forKey: .performancePolicy)
     }
 
     public static let `default` = AutoFrameSettings()
@@ -248,26 +279,133 @@ public struct DetectedFace: Equatable, Sendable {
 }
 
 public struct FrameStatistics: Codable, Equatable, Sendable {
-    public let timestamp: Date
-    public let inputFPS: Double
-    public let outputFPS: Double
-    public let faceConfidence: Float
-    public let cropCoverage: Double
-    public let sourceWidth: Int
-    public let sourceHeight: Int
-    public let outputWidth: Int
-    public let outputHeight: Int
+    public var timestamp: Date
+    public var captureFPS: Double
+    public var processingFPS: Double
+    public var relayFPS: Double
+    public var targetFPS: Double
+    public var faceConfidence: Float
+    public var cropCoverage: Double
+    public var sourceWidth: Int
+    public var sourceHeight: Int
+    public var outputWidth: Int
+    public var outputHeight: Int
+    public var adaptiveQualityActive: Bool
+    public var detectionStride: Int
+    public var segmentationStride: Int
+
+    public var inputFPS: Double {
+        captureFPS
+    }
+
+    public var outputFPS: Double {
+        relayFPS > 0 ? relayFPS : processingFPS
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case timestamp
+        case captureFPS
+        case processingFPS
+        case relayFPS
+        case targetFPS
+        case inputFPS
+        case outputFPS
+        case faceConfidence
+        case cropCoverage
+        case sourceWidth
+        case sourceHeight
+        case outputWidth
+        case outputHeight
+        case adaptiveQualityActive
+        case detectionStride
+        case segmentationStride
+    }
+
+    public init(
+        timestamp: Date,
+        captureFPS: Double,
+        processingFPS: Double,
+        relayFPS: Double,
+        targetFPS: Double,
+        faceConfidence: Float,
+        cropCoverage: Double,
+        sourceWidth: Int,
+        sourceHeight: Int,
+        outputWidth: Int,
+        outputHeight: Int,
+        adaptiveQualityActive: Bool,
+        detectionStride: Int,
+        segmentationStride: Int
+    ) {
+        self.timestamp = timestamp
+        self.captureFPS = captureFPS
+        self.processingFPS = processingFPS
+        self.relayFPS = relayFPS
+        self.targetFPS = targetFPS
+        self.faceConfidence = faceConfidence
+        self.cropCoverage = cropCoverage
+        self.sourceWidth = sourceWidth
+        self.sourceHeight = sourceHeight
+        self.outputWidth = outputWidth
+        self.outputHeight = outputHeight
+        self.adaptiveQualityActive = adaptiveQualityActive
+        self.detectionStride = detectionStride
+        self.segmentationStride = segmentationStride
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        timestamp = try container.decodeIfPresent(Date.self, forKey: .timestamp) ?? .distantPast
+        let legacyInputFPS = try container.decodeIfPresent(Double.self, forKey: .inputFPS) ?? 0
+        let legacyOutputFPS = try container.decodeIfPresent(Double.self, forKey: .outputFPS) ?? 0
+        captureFPS = try container.decodeIfPresent(Double.self, forKey: .captureFPS) ?? legacyInputFPS
+        processingFPS = try container.decodeIfPresent(Double.self, forKey: .processingFPS) ?? legacyOutputFPS
+        relayFPS = try container.decodeIfPresent(Double.self, forKey: .relayFPS) ?? 0
+        targetFPS = try container.decodeIfPresent(Double.self, forKey: .targetFPS) ?? 0
+        faceConfidence = try container.decodeIfPresent(Float.self, forKey: .faceConfidence) ?? 0
+        cropCoverage = try container.decodeIfPresent(Double.self, forKey: .cropCoverage) ?? 1
+        sourceWidth = try container.decodeIfPresent(Int.self, forKey: .sourceWidth) ?? 0
+        sourceHeight = try container.decodeIfPresent(Int.self, forKey: .sourceHeight) ?? 0
+        outputWidth = try container.decodeIfPresent(Int.self, forKey: .outputWidth) ?? 0
+        outputHeight = try container.decodeIfPresent(Int.self, forKey: .outputHeight) ?? 0
+        adaptiveQualityActive = try container.decodeIfPresent(Bool.self, forKey: .adaptiveQualityActive) ?? false
+        detectionStride = try container.decodeIfPresent(Int.self, forKey: .detectionStride) ?? 0
+        segmentationStride = try container.decodeIfPresent(Int.self, forKey: .segmentationStride) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(captureFPS, forKey: .captureFPS)
+        try container.encode(processingFPS, forKey: .processingFPS)
+        try container.encode(relayFPS, forKey: .relayFPS)
+        try container.encode(targetFPS, forKey: .targetFPS)
+        try container.encode(faceConfidence, forKey: .faceConfidence)
+        try container.encode(cropCoverage, forKey: .cropCoverage)
+        try container.encode(sourceWidth, forKey: .sourceWidth)
+        try container.encode(sourceHeight, forKey: .sourceHeight)
+        try container.encode(outputWidth, forKey: .outputWidth)
+        try container.encode(outputHeight, forKey: .outputHeight)
+        try container.encode(adaptiveQualityActive, forKey: .adaptiveQualityActive)
+        try container.encode(detectionStride, forKey: .detectionStride)
+        try container.encode(segmentationStride, forKey: .segmentationStride)
+    }
 
     public static let empty = FrameStatistics(
         timestamp: .distantPast,
-        inputFPS: 0,
-        outputFPS: 0,
+        captureFPS: 0,
+        processingFPS: 0,
+        relayFPS: 0,
+        targetFPS: 0,
         faceConfidence: 0,
         cropCoverage: 1,
         sourceWidth: 0,
         sourceHeight: 0,
         outputWidth: 0,
-        outputHeight: 0
+        outputHeight: 0,
+        adaptiveQualityActive: false,
+        detectionStride: 0,
+        segmentationStride: 0
     )
 }
 

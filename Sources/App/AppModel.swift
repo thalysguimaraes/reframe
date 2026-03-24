@@ -14,17 +14,23 @@ final class AppModel: ObservableObject {
     @Published var trackingEnabled: Bool
     @Published var portraitModeEnabled: Bool
     @Published var portraitBlurStrength: Double
-    @Published var previewImage: CGImage?
+    @Published var hasPreviewFrame = false
+    @Published var previewFPS = 0.0
     @Published var stats: FrameStatistics
     @Published var statusMessage = "Ready."
 
     let extensionManager = SystemExtensionManager()
+    let previewStream = PreviewStream()
 
     private let settingsStore = SharedSettingsStore.shared
     private let statsStore = SharedStatsStore.shared
     private let videoFrameStore = SharedVideoFrameStore.shared
     private let deadZone: Double
+    private let performancePolicy: PerformancePolicy
     private var pipeline: AutoFramePipeline?
+    private var statsRefreshTimer: Timer?
+    private var lastStatsUIUpdateTime: CFAbsoluteTime = .zero
+    private var lastFacePresence: Bool?
 
     init() {
         let settings = settingsStore.load()
@@ -38,7 +44,15 @@ final class AppModel: ObservableObject {
         self.portraitBlurStrength = settings.portraitBlurStrength
         self.stats = statsStore.load() ?? .empty
         self.deadZone = settings.deadZone
+        self.performancePolicy = settings.performancePolicy
         refreshCameras()
+
+        previewStream.onFrameEnqueued = { [weak self] fps in
+            Task { @MainActor in
+                self?.previewFPS = fps
+                self?.hasPreviewFrame = true
+            }
+        }
     }
 
     var currentSettings: AutoFrameSettings {
@@ -51,7 +65,8 @@ final class AppModel: ObservableObject {
             deadZone: deadZone,
             trackingEnabled: trackingEnabled,
             portraitModeEnabled: portraitModeEnabled,
-            portraitBlurStrength: portraitBlurStrength
+            portraitBlurStrength: portraitBlurStrength,
+            performancePolicy: performancePolicy
         )
     }
 
@@ -80,6 +95,7 @@ final class AppModel: ObservableObject {
     func onAppear() {
         extensionManager.refreshStatus()
         persistSettings()
+        startStatsRefreshTimer()
         requestCameraAccessAndStartPreview()
     }
 
@@ -101,6 +117,10 @@ final class AppModel: ObservableObject {
     func startPreview() {
         stopPreview()
         refreshCameras()
+        hasPreviewFrame = false
+        previewFPS = 0
+        lastStatsUIUpdateTime = .zero
+        lastFacePresence = nil
 
         guard selectedCameraID != nil else {
             videoFrameStore.clear()
@@ -114,16 +134,16 @@ final class AppModel: ObservableObject {
             },
             statsStore: statsStore
         )
+        let videoFrameStore = self.videoFrameStore
+        let previewStream = self.previewStream
 
         pipeline.onProcessedFrame = { [weak self] frame in
-            guard let self else { return }
-            self.videoFrameStore.publish(frame.pixelBuffer)
-            let cgImage = PreviewImageFactory.makeCGImage(from: frame.pixelBuffer)
+            videoFrameStore.publish(frame.pixelBuffer)
+            previewStream.enqueue(frame.pixelBuffer)
 
             Task { @MainActor in
-                self.previewImage = cgImage
-                self.stats = frame.statistics
-                self.statusMessage = frame.detectedFace == nil ? "Preview running — no face found" : "Preview running — tracking face"
+                guard let self else { return }
+                self.publishFrameStatistics(frame.statistics, hasFace: frame.detectedFace != nil)
             }
         }
 
@@ -140,7 +160,11 @@ final class AppModel: ObservableObject {
     func stopPreview() {
         pipeline?.stop()
         pipeline = nil
+        previewStream.reset()
         videoFrameStore.clear()
+        hasPreviewFrame = false
+        previewFPS = 0
+        statusMessage = "Preview stopped."
     }
 
     func persistSettings() {
@@ -173,5 +197,35 @@ final class AppModel: ObservableObject {
         default:
             statusMessage = "Camera access denied."
         }
+    }
+
+    private func startStatsRefreshTimer() {
+        guard statsRefreshTimer == nil else { return }
+
+        statsRefreshTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self, let sharedStats = self.statsStore.load() else { return }
+            Task { @MainActor in
+                self.stats.relayFPS = sharedStats.relayFPS
+                self.stats.outputWidth = sharedStats.outputWidth
+                self.stats.outputHeight = sharedStats.outputHeight
+            }
+        }
+    }
+
+    private func publishFrameStatistics(_ frameStatistics: FrameStatistics, hasFace: Bool) {
+        let now = CFAbsoluteTimeGetCurrent()
+        let faceStateChanged = lastFacePresence != hasFace
+
+        guard faceStateChanged || now - lastStatsUIUpdateTime >= 0.1 else {
+            return
+        }
+
+        lastStatsUIUpdateTime = now
+        lastFacePresence = hasFace
+
+        var mergedStats = frameStatistics
+        mergedStats.relayFPS = stats.relayFPS
+        stats = mergedStats
+        statusMessage = hasFace ? "Preview running — tracking face" : "Preview running — no face found"
     }
 }

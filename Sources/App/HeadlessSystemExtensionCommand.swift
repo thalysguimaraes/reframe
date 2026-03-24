@@ -189,7 +189,7 @@ private final class TestPatternPublisher {
         }
 
         let duration = optionValue(named: "--duration").flatMap(Double.init) ?? 15
-        let frameInterval = 1.0 / 30.0
+        let frameInterval = 1.0 / outputResolution.preferredFrameRate
         let deadline = Date(timeIntervalSinceNow: duration)
         var frameIndex = 0
 

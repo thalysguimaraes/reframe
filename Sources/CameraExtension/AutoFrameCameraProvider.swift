@@ -12,6 +12,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private(set) var device: CMIOExtensionDevice!
     private var streamSource: AutoFrameCameraStreamSource!
     private let frameStore = SharedVideoFrameStore.shared
+    private let statsStore = SharedStatsStore.shared
     private let relayQueue = DispatchQueue(label: "dev.autoframe.camera-extension.relay", qos: .userInitiated)
     private let stateQueue = DispatchQueue(label: "dev.autoframe.camera-extension.state")
     private let reframer = PixelBufferReframer()
@@ -19,8 +20,9 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var activeStreamCount = 0
     private var lastRelayLogMessage = ""
     private var lastRelayLogTime: CFAbsoluteTime = .zero
-    private var outputResolution: OutputResolution = .hd720
+    private var activeFormat = VirtualCameraFormat(resolution: .hd720, frameRate: OutputResolution.hd720.preferredFrameRate)
     private var placeholderBuffers: [OutputResolution: CVPixelBuffer] = [:]
+    private var relayFPSWindow: [CFAbsoluteTime] = []
     private var streamingTimer: DispatchSourceTimer?
 
     override init() {
@@ -63,19 +65,15 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
     func setDeviceProperties(_ deviceProperties: CMIOExtensionDeviceProperties) throws {}
 
-    func startStreaming(outputResolution: OutputResolution) {
+    fileprivate func startStreaming(format: VirtualCameraFormat) {
         var timerToStart: DispatchSourceTimer?
         stateQueue.sync {
             activeStreamCount += 1
-            self.outputResolution = outputResolution
+            activeFormat = format
             guard streamingTimer == nil else { return }
 
             let timer = DispatchSource.makeTimerSource(queue: relayQueue)
-            timer.schedule(
-                deadline: .now(),
-                repeating: outputResolution.frameDuration.dispatchInterval,
-                leeway: .milliseconds(4)
-            )
+            schedule(timer: timer, for: format)
             timer.setEventHandler { [weak self] in
                 self?.relayNextFrame()
             }
@@ -96,6 +94,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             guard activeStreamCount == 0 else { return }
             timerToCancel = streamingTimer
             streamingTimer = nil
+            relayFPSWindow.removeAll(keepingCapacity: true)
         }
 
         timerToCancel?.cancel()
@@ -104,20 +103,23 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
     }
 
-    func updateStreamingResolution(_ outputResolution: OutputResolution) {
+    fileprivate func updateStreamingFormat(_ format: VirtualCameraFormat) {
         stateQueue.sync {
-            self.outputResolution = outputResolution
+            activeFormat = format
+            if let streamingTimer {
+                schedule(timer: streamingTimer, for: format)
+            }
         }
     }
 
     private func relayNextFrame() {
-        let outputResolution = stateQueue.sync { self.outputResolution }
-        let pixelBuffer = loadOutputPixelBuffer(for: outputResolution) ?? placeholderBuffer(for: outputResolution)
+        let format = stateQueue.sync { activeFormat }
+        let pixelBuffer = loadOutputPixelBuffer(for: format) ?? placeholderBuffer(for: format.resolution)
         guard let pixelBuffer else { return }
-        send(pixelBuffer: pixelBuffer)
+        send(pixelBuffer: pixelBuffer, format: format)
     }
 
-    private func loadOutputPixelBuffer(for outputResolution: OutputResolution) -> CVPixelBuffer? {
+    private func loadOutputPixelBuffer(for format: VirtualCameraFormat) -> CVPixelBuffer? {
         guard let snapshot = frameStore.loadLatest(maximumAge: 1.0) else {
             logRelay(message: "Relay waiting for a recent shared frame from the host app.")
             return nil
@@ -128,7 +130,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             height: CVPixelBufferGetHeight(snapshot.pixelBuffer)
         )
         guard sourceSize != .zero else { return nil }
-        guard sourceSize != outputResolution.size else {
+        guard sourceSize != format.resolution.size else {
             logRelay(
                 message: "Relay streaming shared frame seq \(snapshot.descriptor.sequenceNumber) at \(Int(sourceSize.width))x\(Int(sourceSize.height))."
             )
@@ -139,11 +141,11 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
         let scaledBuffer = reframer.render(
             pixelBuffer: snapshot.pixelBuffer,
             cropRect: fullFrame,
-            outputSize: outputResolution.size
+            outputSize: format.resolution.size
         )
         if scaledBuffer != nil {
             logRelay(
-                message: "Relay scaling shared frame seq \(snapshot.descriptor.sequenceNumber) from \(Int(sourceSize.width))x\(Int(sourceSize.height)) to \(Int(outputResolution.size.width))x\(Int(outputResolution.size.height))."
+                message: "Relay scaling shared frame seq \(snapshot.descriptor.sequenceNumber) from \(Int(sourceSize.width))x\(Int(sourceSize.height)) to \(Int(format.resolution.size.width))x\(Int(format.resolution.size.height))."
             )
         } else {
             logRelay(message: "Relay failed to scale the shared frame.", level: .error)
@@ -151,7 +153,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
         return scaledBuffer
     }
 
-    private func send(pixelBuffer: CVPixelBuffer) {
+    private func send(pixelBuffer: CVPixelBuffer, format: VirtualCameraFormat) {
         let now = CMClockGetTime(CMClockGetHostTimeClock())
         guard let sampleBuffer = try? SampleBufferFactory.makeSampleBuffer(
             from: pixelBuffer,
@@ -166,6 +168,19 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             discontinuity: [],
             hostTimeInNanoseconds: UInt64(now.seconds * Double(NSEC_PER_SEC))
         )
+
+        let relayFPS = stateQueue.sync { () -> Double in
+            let now = CFAbsoluteTimeGetCurrent()
+            update(window: &relayFPSWindow, now: now)
+            return rollingFPS(from: relayFPSWindow)
+        }
+
+        statsStore.update {
+            $0.timestamp = Date()
+            $0.relayFPS = relayFPS
+            $0.outputWidth = Int(format.resolution.size.width)
+            $0.outputHeight = Int(format.resolution.size.height)
+        }
     }
 
     private func placeholderBuffer(for outputResolution: OutputResolution) -> CVPixelBuffer? {
@@ -239,19 +254,44 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             logger.debug("\(message, privacy: .public)")
         }
     }
+
+    private func schedule(timer: DispatchSourceTimer, for format: VirtualCameraFormat) {
+        let leeway: DispatchTimeInterval = format.frameRate >= 60 ? .milliseconds(2) : .milliseconds(4)
+        timer.schedule(
+            deadline: .now(),
+            repeating: format.frameDuration.dispatchInterval,
+            leeway: leeway
+        )
+    }
+
+    private func update(window: inout [CFAbsoluteTime], now: CFAbsoluteTime) {
+        window.append(now)
+        window = window.filter { now - $0 <= 1.0 }
+    }
+
+    private func rollingFPS(from timestamps: [CFAbsoluteTime]) -> Double {
+        guard timestamps.count > 1, let first = timestamps.first, let last = timestamps.last, last > first else {
+            return Double(timestamps.count)
+        }
+        return Double(timestamps.count - 1) / (last - first)
+    }
 }
 
 final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     private(set) var stream: CMIOExtensionStream!
 
     let device: CMIOExtensionDevice
+    private let supportedFormats: [VirtualCameraFormat]
     private let streamFormats: [CMIOExtensionStreamFormat]
 
     init(localizedName: String, streamID: UUID, device: CMIOExtensionDevice) {
         self.device = device
-        self.streamFormats = OutputResolution.allCases.map { resolution in
+        self.supportedFormats = OutputResolution.allCases.flatMap { resolution in
+            resolution.supportedFrameRates.map { VirtualCameraFormat(resolution: resolution, frameRate: $0) }
+        }
+        self.streamFormats = supportedFormats.map { format in
             var description: CMFormatDescription?
-            let size = resolution.size
+            let size = format.resolution.size
             CMVideoFormatDescriptionCreate(
                 allocator: kCFAllocatorDefault,
                 codecType: kCVPixelFormatType_32BGRA,
@@ -262,9 +302,9 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
             )
             return CMIOExtensionStreamFormat(
                 formatDescription: description!,
-                maxFrameDuration: resolution.frameDuration,
-                minFrameDuration: resolution.frameDuration,
-                validFrameDurations: [resolution.frameDuration]
+                maxFrameDuration: format.frameDuration,
+                minFrameDuration: format.frameDuration,
+                validFrameDurations: [format.frameDuration]
             )
         }
 
@@ -302,7 +342,7 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
         }
 
         if properties.contains(.streamFrameDuration) {
-            propertiesState.frameDuration = currentResolution.frameDuration
+            propertiesState.frameDuration = currentFormat.frameDuration
         }
 
         return propertiesState
@@ -311,7 +351,7 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {
         if let activeFormatIndex = streamProperties.activeFormatIndex {
             self.activeFormatIndex = activeFormatIndex
-            (device.source as? AutoFrameCameraDeviceSource)?.updateStreamingResolution(currentResolution)
+            (device.source as? AutoFrameCameraDeviceSource)?.updateStreamingFormat(currentFormat)
         }
     }
 
@@ -323,7 +363,7 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
         guard let deviceSource = device.source as? AutoFrameCameraDeviceSource else {
             fatalError("Unexpected CMIO device source.")
         }
-        deviceSource.startStreaming(outputResolution: currentResolution)
+        deviceSource.startStreaming(format: currentFormat)
     }
 
     func stopStream() throws {
@@ -333,8 +373,11 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
         deviceSource.stopStreaming()
     }
 
-    private var currentResolution: OutputResolution {
-        OutputResolution.allCases[safe: activeFormatIndex] ?? .hd1080
+    private var currentFormat: VirtualCameraFormat {
+        supportedFormats[safe: activeFormatIndex] ?? VirtualCameraFormat(
+            resolution: .hd1080,
+            frameRate: OutputResolution.hd1080.fallbackFrameRate
+        )
     }
 }
 
@@ -387,5 +430,14 @@ private extension CMTime {
         }
 
         return .nanoseconds(Int(seconds * Double(NSEC_PER_SEC)))
+    }
+}
+
+private struct VirtualCameraFormat: Equatable {
+    let resolution: OutputResolution
+    let frameRate: Double
+
+    var frameDuration: CMTime {
+        resolution.frameDuration(for: frameRate)
     }
 }
