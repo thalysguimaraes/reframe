@@ -56,7 +56,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             deviceProperties.transportType = kIOAudioDeviceTransportTypeVirtual
         }
         if properties.contains(.deviceModel) {
-            deviceProperties.model = "AutoFrame Cam Virtual Camera"
+            deviceProperties.model = "Reframe Virtual Camera"
         }
         return deviceProperties
     }

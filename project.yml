@@ -51,7 +51,7 @@ targets:
       path: Config/AutoFrameCameraExtension-Info.plist
       properties:
         CFBundlePackageType: SYSX
-        NSSystemExtensionUsageDescription: AutoFrame Cam installs a virtual camera extension so meeting apps can use the reframed feed.
+        NSSystemExtensionUsageDescription: Reframe installs a virtual camera extension so meeting apps can use the reframed feed.
         AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
         CMIOExtension:
           CMIOExtensionMachServiceName: $(AUTOFRAME_APP_GROUP_ID)
@@ -78,9 +78,10 @@ targets:
     type: application
     platform: macOS
     deploymentTarget: "13.0"
-    productName: AutoFrame Cam
+    productName: Reframe
     sources:
       - path: Sources/App
+      - path: Assets/Assets.xcassets
     attributes:
       SystemCapabilities:
         com.apple.developer.app-groups:
@@ -91,15 +92,16 @@ targets:
       path: Config/AutoFrameCam-Info.plist
       properties:
         AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
-        NSCameraUsageDescription: AutoFrame Cam needs camera access to preview and configure your selected webcam.
-        NSSystemExtensionUsageDescription: AutoFrame Cam installs a virtual camera extension so meeting apps can use the reframed feed.
+        NSCameraUsageDescription: Reframe needs camera access to preview and configure your selected webcam.
+        NSSystemExtensionUsageDescription: Reframe installs a virtual camera extension so meeting apps can use the reframed feed.
         LSApplicationCategoryType: public.app-category.productivity
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCam
-        PRODUCT_NAME: AutoFrame Cam
+        PRODUCT_NAME: Reframe
         CODE_SIGN_ENTITLEMENTS: Config/AutoFrameCam.entitlements
         ENABLE_APP_SANDBOX: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: AutoFrameCore
       - target: AutoFrameCameraExtension
@@ -138,7 +140,7 @@ targets:
       - target: AutoFrameCore
 
 schemes:
-  AutoFrame Cam:
+  Reframe:
     build:
       targets:
         AutoFrameCam: all

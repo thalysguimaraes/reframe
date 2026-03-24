@@ -5,7 +5,7 @@
 <h1 align="center">Reframe</h1>
 
 <p align="center">
-  <strong>Open-source face-centering virtual camera for macOS</strong><br>
+  <strong>Open-source virtual camera with smart framing and portrait mode for macOS</strong><br>
   Center Stage for any webcam.
 </p>
 
@@ -133,13 +133,13 @@ Before trying to install the virtual camera, create the App Group `group.dev.aut
 
 ```bash
 xcodegen generate
-xcodebuild -scheme "AutoFrame Cam" -configuration Release build
+xcodebuild -scheme "Reframe" -configuration Release build
 ```
 
 ### Run tests
 
 ```bash
-xcodebuild -scheme "AutoFrame Cam" test
+xcodebuild -scheme "Reframe" test
 ```
 
 ## Project structure
@@ -164,13 +164,13 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-change`)
 3. Make your changes and add tests
-4. Run the test suite (`xcodebuild -scheme "AutoFrame Cam" test`)
+4. Run the test suite (`xcodebuild -scheme "Reframe" test`)
 5. Open a pull request
 
 ### Areas where help is appreciated
 
 - Multi-person framing support
-- Background blur / replacement
+- Background replacement / virtual backgrounds
 - MediaPipe integration for faster/better face detection
 - Homebrew cask formula
 - Localization

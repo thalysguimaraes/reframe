@@ -15,8 +15,8 @@ public enum AppConstants {
     }
 
     public static let supportDirectoryName = "AutoFrameCam"
-    public static let virtualCameraName = "AutoFrame Cam"
-    public static let providerManufacturer = "AutoFrame Cam"
+    public static let virtualCameraName = "Reframe"
+    public static let providerManufacturer = "Reframe"
     public static let extensionBundleIdentifier = "dev.autoframe.AutoFrameCam.CameraExtension"
 
     public static let virtualDeviceUUID = UUID(uuidString: "6A250C8B-70A5-4E29-BBA9-83E1572E7846")!
