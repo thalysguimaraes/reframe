@@ -20,6 +20,7 @@ final class AppModel: ObservableObject {
 
     private let settingsStore = SharedSettingsStore.shared
     private let statsStore = SharedStatsStore.shared
+    private let videoFrameStore = SharedVideoFrameStore.shared
     private let deadZone: Double
     private var pipeline: AutoFramePipeline?
 
@@ -60,8 +61,17 @@ final class AppModel: ObservableObject {
     }
 
     func onAppear() {
+        extensionManager.refreshStatus()
         persistSettings()
         requestCameraAccessAndStartPreview()
+    }
+
+    func installExtension() {
+        extensionManager.activateExtension()
+    }
+
+    func uninstallExtension() {
+        extensionManager.deactivateExtension()
     }
 
     func refreshCameras() {
@@ -76,6 +86,7 @@ final class AppModel: ObservableObject {
         refreshCameras()
 
         guard selectedCameraID != nil else {
+            videoFrameStore.clear()
             statusMessage = "No camera available."
             return
         }
@@ -89,6 +100,7 @@ final class AppModel: ObservableObject {
 
         pipeline.onProcessedFrame = { [weak self] frame in
             guard let self else { return }
+            self.videoFrameStore.publish(frame.pixelBuffer)
             let cgImage = PreviewImageFactory.makeCGImage(from: frame.pixelBuffer)
 
             Task { @MainActor in
@@ -111,14 +123,7 @@ final class AppModel: ObservableObject {
     func stopPreview() {
         pipeline?.stop()
         pipeline = nil
-    }
-
-    func installExtension() {
-        extensionManager.activateExtension()
-    }
-
-    func uninstallExtension() {
-        extensionManager.deactivateExtension()
+        videoFrameStore.clear()
     }
 
     func persistSettings() {

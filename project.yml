@@ -6,13 +6,14 @@ options:
     macOS: "13.0"
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 1
+    CURRENT_PROJECT_VERSION: 6
     MARKETING_VERSION: 0.1.0
     SWIFT_VERSION: 6.0
     SWIFT_STRICT_CONCURRENCY: minimal
     MACOSX_DEPLOYMENT_TARGET: 13.0
     DEVELOPMENT_TEAM: B27B4ED4CL
     CODE_SIGN_STYLE: Automatic
+    AUTOFRAME_APP_GROUP_ID: group.dev.autoframe.cam
 targets:
   AutoFrameCore:
     type: framework.static
@@ -33,6 +34,7 @@ targets:
       - sdk: CoreMedia.framework
       - sdk: CoreVideo.framework
       - sdk: CoreGraphics.framework
+      - sdk: IOSurface.framework
 
   AutoFrameCameraExtension:
     type: system-extension
@@ -41,18 +43,27 @@ targets:
     productName: AutoFrameCameraExtension
     sources:
       - path: Sources/CameraExtension
+    attributes:
+      SystemCapabilities:
+        com.apple.developer.app-groups:
+          enabled: 1
     info:
       path: Config/AutoFrameCameraExtension-Info.plist
       properties:
+        CFBundlePackageType: SYSX
         NSSystemExtensionUsageDescription: AutoFrame Cam installs a virtual camera extension so meeting apps can use the reframed feed.
+        AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
         CMIOExtension:
-          CMIOExtensionMachServiceName: $(TeamIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)
+          CMIOExtensionMachServiceName: $(AUTOFRAME_APP_GROUP_ID)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCam.CameraExtension
         PRODUCT_NAME: AutoFrameCameraExtension
+        EXECUTABLE_NAME: $(PRODUCT_BUNDLE_IDENTIFIER)
+        WRAPPER_NAME: $(PRODUCT_BUNDLE_IDENTIFIER).systemextension
         CODE_SIGN_ENTITLEMENTS: Config/AutoFrameCameraExtension.entitlements
         ENABLE_APP_SANDBOX: YES
+        GENERATE_INFOPLIST_FILE: YES
     dependencies:
       - target: AutoFrameCore
       - sdk: CoreMediaIO.framework
@@ -60,6 +71,7 @@ targets:
       - sdk: Vision.framework
       - sdk: CoreImage.framework
       - sdk: CoreVideo.framework
+      - sdk: IOSurface.framework
       - sdk: IOKit.framework
 
   AutoFrameCam:
@@ -69,9 +81,16 @@ targets:
     productName: AutoFrame Cam
     sources:
       - path: Sources/App
+    attributes:
+      SystemCapabilities:
+        com.apple.developer.app-groups:
+          enabled: 1
+        com.apple.developer.system-extension.install:
+          enabled: 1
     info:
       path: Config/AutoFrameCam-Info.plist
       properties:
+        AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
         NSCameraUsageDescription: AutoFrame Cam needs camera access to preview and configure your selected webcam.
         NSSystemExtensionUsageDescription: AutoFrame Cam installs a virtual camera extension so meeting apps can use the reframed feed.
         LSApplicationCategoryType: public.app-category.productivity
@@ -88,6 +107,7 @@ targets:
       - sdk: SwiftUI.framework
       - sdk: AppKit.framework
       - sdk: AVFoundation.framework
+      - sdk: IOSurface.framework
       - sdk: SystemExtensions.framework
 
   autoframe-cam:

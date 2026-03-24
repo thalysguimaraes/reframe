@@ -17,6 +17,7 @@ public enum SharedStorage {
 
     public static let settingsURL = containerDirectory().appendingPathComponent("settings.json")
     public static let statsURL = containerDirectory().appendingPathComponent("stats.json")
+    public static let latestFrameURL = containerDirectory().appendingPathComponent("latest-frame.json")
 
     private static func ensureDirectory(_ url: URL) {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -102,4 +103,3 @@ public final class SharedStatsStore: @unchecked Sendable {
         try? data.write(to: SharedStorage.statsURL, options: .atomic)
     }
 }
-

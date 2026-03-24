@@ -149,17 +149,19 @@ struct VirtualCameraSectionView: View {
             SidebarSectionHeader(title: "Virtual Camera", icon: "web.camera")
 
             HStack(spacing: 8) {
-                Button("Install") {
+                Button(model.extensionManager.primaryActionTitle) {
                     model.installExtension()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
+                .disabled(!model.extensionManager.canActivateExtension)
 
-                Button("Uninstall") {
+                Button(model.extensionManager.secondaryActionTitle) {
                     model.uninstallExtension()
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .disabled(!model.extensionManager.canDeactivateExtension)
             }
 
             if !model.extensionManager.statusMessage.isEmpty {

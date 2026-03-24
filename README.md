@@ -127,6 +127,8 @@ xcodegen generate
 open AutoFrameCam.xcodeproj
 ```
 
+Before trying to install the virtual camera, create the App Group `group.dev.autoframe.cam` in Apple Developer and attach it to both `dev.autoframe.AutoFrameCam` and `dev.autoframe.AutoFrameCam.CameraExtension`. The generated provisioning profiles must include that exact App Group value, and the camera extension's `CMIOExtensionMachServiceName` must match it exactly for Core Media I/O validation to pass.
+
 ### Terminal build
 
 ```bash
