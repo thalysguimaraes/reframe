@@ -1,4 +1,5 @@
 import AutoFrameCore
+import AppKit
 import SwiftUI
 
 // MARK: - Camera
@@ -143,6 +144,7 @@ private struct CameraDropdown: View {
                         .buttonStyle(.plain)
                         .focusable()
                         .focused($focusedCameraID, equals: camera.uniqueID)
+                        .cameraDropdownFocusEffectDisabled()
                         .id(camera.uniqueID)
                         .onHover { isHovering in
                             hoveredCameraID = isHovering ? camera.uniqueID : nil
@@ -197,7 +199,8 @@ private struct CameraDropdown: View {
     @ViewBuilder
     private func cameraRow(for camera: CameraDeviceDescriptor) -> some View {
         let isSelected = selection == camera.uniqueID
-        let isHighlighted = hoveredCameraID == camera.uniqueID || keyboardSelectionID == camera.uniqueID
+        let isHovered = hoveredCameraID == camera.uniqueID
+        let isKeyboardFocused = keyboardSelectionID == camera.uniqueID
 
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
@@ -223,21 +226,43 @@ private struct CameraDropdown: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(rowBackground(isSelected: isSelected, isHighlighted: isHighlighted))
+                .fill(
+                    rowBackground(
+                        isSelected: isSelected,
+                        isHovered: isHovered,
+                        isKeyboardFocused: isKeyboardFocused
+                    )
+                )
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(isSelected ? Theme.accent.opacity(0.28) : Color.clear, lineWidth: 1)
+                .strokeBorder(
+                    rowBorder(isSelected: isSelected, isKeyboardFocused: isKeyboardFocused),
+                    lineWidth: 1
+                )
         )
         .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func rowBackground(isSelected: Bool, isHighlighted: Bool) -> Color {
+    private func rowBackground(isSelected: Bool, isHovered: Bool, isKeyboardFocused: Bool) -> Color {
         if isSelected {
             return Theme.backgroundControlSelected
         }
-        if isHighlighted {
+        if isKeyboardFocused {
+            return Theme.accent.opacity(0.12)
+        }
+        if isHovered {
             return Theme.backgroundControlHover
+        }
+        return .clear
+    }
+
+    private func rowBorder(isSelected: Bool, isKeyboardFocused: Bool) -> Color {
+        if isSelected {
+            return Theme.accent.opacity(0.28)
+        }
+        if isKeyboardFocused {
+            return Theme.accent.opacity(0.22)
         }
         return .clear
     }
@@ -284,6 +309,54 @@ private struct CameraDropdown: View {
         guard selection != camera.uniqueID else { return }
         selection = camera.uniqueID
         onSelection()
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func cameraDropdownFocusEffectDisabled() -> some View {
+        if #available(macOS 14.0, *) {
+            self.focusEffectDisabled()
+        } else {
+            self.background(CameraDropdownFocusRingDisabler())
+        }
+    }
+}
+
+private struct CameraDropdownFocusRingDisabler: NSViewRepresentable {
+    func makeNSView(context: Context) -> CameraDropdownFocusRingDisablingView {
+        CameraDropdownFocusRingDisablingView()
+    }
+
+    func updateNSView(_ nsView: CameraDropdownFocusRingDisablingView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.disableEnclosingFocusRing()
+        }
+    }
+}
+
+private final class CameraDropdownFocusRingDisablingView: NSView {
+    override var focusRingType: NSFocusRingType {
+        get { .none }
+        set { }
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        disableEnclosingFocusRing()
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        disableEnclosingFocusRing()
+    }
+
+    func disableEnclosingFocusRing() {
+        var currentView: NSView? = self
+        while let view = currentView {
+            view.focusRingType = .none
+            currentView = view.superview
+        }
     }
 }
 
