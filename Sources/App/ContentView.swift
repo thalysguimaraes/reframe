@@ -2,6 +2,14 @@ import AutoFrameCore
 import SwiftUI
 
 struct ContentView: View {
+    private static let topBarIconImage: NSImage? = {
+        guard let path = Bundle.main.path(forResource: "topbar-icon@2x", ofType: "png") else {
+            return nil
+        }
+
+        return NSImage(contentsOfFile: path)
+    }()
+
     @StateObject private var model = AppModel()
     @State private var iconHovered = false
 
@@ -63,18 +71,17 @@ struct ContentView: View {
 
             Spacer()
 
-            if let iconImage = NSImage(contentsOfFile: Bundle.main.path(forResource: "topbar-icon@2x", ofType: "png") ?? "") {
+            if let iconImage = Self.topBarIconImage {
                 Image(nsImage: iconImage)
                     .resizable()
-                    .interpolation(.high)
+                    .interpolation(.medium)
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 24, height: 24)
                     .scaleEffect(iconHovered ? 1.12 : 1.0)
                     .rotationEffect(.degrees(iconHovered ? 8 : 0))
+                    .animation(.spring(response: 0.35, dampingFraction: 0.6), value: iconHovered)
                     .onHover { hovering in
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.6)) {
-                            iconHovered = hovering
-                        }
+                        iconHovered = hovering
                     }
             }
 
