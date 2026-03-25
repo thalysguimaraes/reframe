@@ -227,11 +227,13 @@ private struct PipelineActivityOverlay: View {
                 VStack(spacing: 4) {
                     Text(activity.title)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textHeading)
+                        .foregroundStyle(Theme.previewOverlayTextPrimary)
+                        .shadow(color: Theme.previewOverlayTextShadow, radius: 8, x: 0, y: 1)
 
                     Text(activity.detail)
                         .font(.system(size: 12, design: .rounded))
-                        .foregroundStyle(Theme.textSecondary)
+                        .foregroundStyle(Theme.previewOverlayTextSecondary)
+                        .shadow(color: Theme.previewOverlayTextShadow, radius: 6, x: 0, y: 1)
                         .multilineTextAlignment(.center)
                 }
             }
@@ -239,7 +241,7 @@ private struct PipelineActivityOverlay: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: Theme.previewCornerRadius, style: .continuous)
-                .strokeBorder(Theme.controlBorder, lineWidth: 1)
+                .strokeBorder(Theme.previewOverlayStroke, lineWidth: 1)
         )
     }
 }
