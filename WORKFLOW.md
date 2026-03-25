@@ -30,7 +30,7 @@ hooks:
       done
     fi
 agent:
-  max_concurrent_agents: 1
+  max_concurrent_agents: 3
   max_turns: 50
 codex:
   command: codex --config shell_environment_policy.inherit=all --config model_reasoning_effort=xhigh --model gpt-5.3-codex app-server
