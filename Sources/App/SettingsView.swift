@@ -6,17 +6,6 @@ struct AboutView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            // Close button
-            HStack {
-                Spacer()
-                Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Theme.textTertiary)
-                }
-                .buttonStyle(.plain)
-            }
-
             // App identity
             VStack(spacing: 12) {
                 if let iconImage = NSImage(contentsOfFile: Bundle.main.path(forResource: "topbar-icon@2x", ofType: "png") ?? "") {
@@ -54,7 +43,9 @@ struct AboutView: View {
                         }
                 }
 
-                Divider().overlay(Theme.divider)
+                Rectangle()
+                    .fill(Theme.divider)
+                    .frame(height: 1)
 
                 settingsRow(
                     icon: "menubar.rectangle",
@@ -69,7 +60,9 @@ struct AboutView: View {
                         }
                 }
 
-                Divider().overlay(Theme.divider)
+                Rectangle()
+                    .fill(Theme.divider)
+                    .frame(height: 1)
 
                 settingsRow(
                     icon: "square.grid.2x2",
@@ -85,7 +78,9 @@ struct AboutView: View {
                         }
                 }
 
-                Divider().overlay(Theme.divider)
+                Rectangle()
+                    .fill(Theme.divider)
+                    .frame(height: 1)
 
                 settingsRow(
                     icon: "rectangle.inset.filled.and.person.filled",
@@ -101,7 +96,9 @@ struct AboutView: View {
                         }
                 }
 
-                Divider().overlay(Theme.divider)
+                Rectangle()
+                    .fill(Theme.divider)
+                    .frame(height: 1)
 
                 // Virtual Camera
                 settingsRow(
@@ -131,7 +128,9 @@ struct AboutView: View {
                     }
                 }
 
-                Divider().overlay(Theme.divider)
+                Rectangle()
+                    .fill(Theme.divider)
+                    .frame(height: 1)
 
                 settingsRow(
                     icon: "sparkles.rectangle.stack",
@@ -156,9 +155,19 @@ struct AboutView: View {
             Spacer()
         }
         .fontDesign(.rounded)
-        .padding(24)
+        .padding(.top, 44)
+        .padding([.horizontal, .bottom], 24)
         .frame(width: 380, height: 560)
         .background(Theme.backgroundWindow)
+        .overlay(alignment: .topTrailing) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 16))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+        }
     }
 
     private func settingsRow<Trailing: View>(
@@ -197,19 +206,15 @@ struct AboutView: View {
     private func statusBadge(title: String) -> some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(Theme.accent)
+                .fill(Color.white.opacity(0.8))
                 .frame(width: 6, height: 6)
 
             Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
-                .foregroundStyle(Theme.textPrimary)
+                .foregroundStyle(.white)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Theme.backgroundControlSelected, in: Capsule())
-        .overlay(
-            Capsule()
-                .strokeBorder(Theme.controlBorder, lineWidth: 1)
-        )
+        .background(Theme.accent, in: Capsule())
     }
 }
