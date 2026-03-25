@@ -12,10 +12,6 @@ public final class PortraitCompositor {
 
     // MARK: - Configuration
 
-    /// Maps the 0…1 user-facing blur strength to a CIGaussianBlur radius range.
-    private static let minBlurRadius: Double = 8
-    private static let maxBlurRadius: Double = 40
-
     /// Erode the mask inward before feathering so the soft transition sits
     /// on the real silhouette boundary instead of bleeding outward (halo).
     /// Keep small to avoid clipping thin accessories like headphones.
@@ -62,6 +58,15 @@ public final class PortraitCompositor {
         blurStrength: Double,
         profile: AdaptiveProcessingProfile
     ) -> CVPixelBuffer? {
+        let blurRadius = PortraitBlurMapping.radius(for: blurStrength)
+        guard blurRadius > 0.001 else {
+            // Treat zero-strength portrait blur as a true passthrough so the
+            // effect starts from "off" and avoids unnecessary segmentation work.
+            lastMask = nil
+            framesSinceSegmentation = 0
+            return nil
+        }
+
         framesSinceSegmentation += 1
 
         let needsSegmentation = framesSinceSegmentation >= profile.segmentationStride || lastMask == nil
@@ -78,7 +83,7 @@ public final class PortraitCompositor {
             return nil
         }
 
-        return composite(pixelBuffer: pixelBuffer, mask: mask, blurStrength: blurStrength)
+        return composite(pixelBuffer: pixelBuffer, mask: mask, blurRadius: blurRadius)
     }
 
     // MARK: - Segmentation
@@ -103,7 +108,7 @@ public final class PortraitCompositor {
 
     // MARK: - Compositing
 
-    private func composite(pixelBuffer: CVPixelBuffer, mask: CIImage, blurStrength: Double) -> CVPixelBuffer? {
+    private func composite(pixelBuffer: CVPixelBuffer, mask: CIImage, blurRadius: Double) -> CVPixelBuffer? {
         let sourceImage = CIImage(cvPixelBuffer: pixelBuffer)
         let imageSize = sourceImage.extent
 
@@ -140,7 +145,6 @@ public final class PortraitCompositor {
         ])
 
         // Blur the full image for the background.
-        let blurRadius = Self.minBlurRadius + (Self.maxBlurRadius - Self.minBlurRadius) * blurStrength
         let blurredBackground = sourceImage
             .clampedToExtent()
             .applyingGaussianBlur(sigma: blurRadius)

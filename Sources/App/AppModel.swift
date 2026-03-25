@@ -119,6 +119,10 @@ final class AppModel: ObservableObject {
     }
 
     var portraitBlurLabel: String {
+        if portraitBlurStrength < 0.01 {
+            return "Off"
+        }
+
         switch portraitBlurStrength {
         case ..<0.34:
             return "Subtle"
@@ -127,6 +131,14 @@ final class AppModel: ObservableObject {
         default:
             return "Strong"
         }
+    }
+
+    var contrastLabel: String {
+        let relativePercentage = ContrastControlMapping.relativePercentage(for: contrast)
+        if abs(relativePercentage) < 0.5 {
+            return "0%"
+        }
+        return String(format: "%+.0f%%", relativePercentage)
     }
 
     var zoomLabel: String {
