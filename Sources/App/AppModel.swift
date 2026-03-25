@@ -18,6 +18,20 @@ final class AppModel: ObservableObject {
     @Published var previewFPS = 0.0
     @Published var stats: FrameStatistics
     @Published var statusMessage = "Ready."
+    @Published var isSidebarVisible = true
+    @Published var showsDetailedStats = false
+    @Published var showingSettings = false
+    @Published var zoomEnabled = true
+    @Published var exposure: Double
+    @Published var contrast: Double
+    @Published var temperature: Double
+    @Published var tint: Double
+    @Published var vibrance: Double
+    @Published var saturation: Double
+    @Published var sharpness: Double
+    @Published var isAdjustmentsSidebarVisible = true
+    @Published var isDarkMode = true
+    @Published private(set) var pipelineActivity: PipelineActivity?
 
     let extensionManager = SystemExtensionManager()
     let previewStream = PreviewStream()
@@ -25,15 +39,19 @@ final class AppModel: ObservableObject {
     private let settingsStore = SharedSettingsStore.shared
     private let statsStore = SharedStatsStore.shared
     private let videoFrameStore = SharedVideoFrameStore.shared
+    private let liveSettingsSnapshot: LiveSettingsSnapshot
     private let deadZone: Double
     private let performancePolicy: PerformancePolicy
     private var pipeline: AutoFramePipeline?
+    private var pipelineOperationTask: Task<Void, Never>?
+    private var pipelineOperationID = 0
     private var statsRefreshTimer: Timer?
     private var lastStatsUIUpdateTime: CFAbsoluteTime = .zero
     private var lastFacePresence: Bool?
 
     init() {
         let settings = settingsStore.load()
+        self.liveSettingsSnapshot = LiveSettingsSnapshot(settings)
         self.selectedCameraID = settings.cameraID
         self.selectedOutput = settings.outputResolution
         self.selectedPreset = settings.framingPreset
@@ -42,6 +60,14 @@ final class AppModel: ObservableObject {
         self.trackingEnabled = settings.trackingEnabled
         self.portraitModeEnabled = settings.portraitModeEnabled
         self.portraitBlurStrength = settings.portraitBlurStrength
+        self.zoomEnabled = settings.zoomStrength > 0
+        self.exposure = settings.exposure
+        self.contrast = settings.contrast
+        self.temperature = settings.temperature
+        self.tint = settings.tint
+        self.vibrance = settings.vibrance
+        self.saturation = settings.saturation
+        self.sharpness = settings.sharpness
         self.stats = statsStore.load() ?? .empty
         self.deadZone = settings.deadZone
         self.performancePolicy = settings.performancePolicy
@@ -55,6 +81,10 @@ final class AppModel: ObservableObject {
         }
     }
 
+    var isPipelineBusy: Bool {
+        pipelineActivity != nil
+    }
+
     var currentSettings: AutoFrameSettings {
         AutoFrameSettings(
             cameraID: selectedCameraID,
@@ -66,8 +96,26 @@ final class AppModel: ObservableObject {
             trackingEnabled: trackingEnabled,
             portraitModeEnabled: portraitModeEnabled,
             portraitBlurStrength: portraitBlurStrength,
-            performancePolicy: performancePolicy
+            performancePolicy: performancePolicy,
+            exposure: exposure,
+            contrast: contrast,
+            temperature: temperature,
+            tint: tint,
+            vibrance: vibrance,
+            saturation: saturation,
+            sharpness: sharpness
         )
+    }
+
+    func resetAdjustments() {
+        exposure = 0.0
+        contrast = 1.0
+        temperature = 6500.0
+        tint = 0.0
+        vibrance = 0.0
+        saturation = 1.0
+        sharpness = 0.0
+        persistSettings()
     }
 
     var portraitBlurLabel: String {
@@ -109,75 +157,86 @@ final class AppModel: ObservableObject {
 
     func refreshCameras() {
         cameras = CameraCatalog.videoDevices()
-        if selectedCameraID == nil {
+        if let selectedCameraID, !cameras.contains(where: { $0.uniqueID == selectedCameraID }) {
+            self.selectedCameraID = cameras.first?.uniqueID
+        } else if selectedCameraID == nil {
             selectedCameraID = cameras.first?.uniqueID
         }
     }
 
     func startPreview() {
-        stopPreview()
         refreshCameras()
+        persistSettings()
         hasPreviewFrame = false
         previewFPS = 0
         lastStatsUIUpdateTime = .zero
         lastFacePresence = nil
 
-        guard selectedCameraID != nil else {
+        let settings = currentSettings
+        guard settings.cameraID != nil else {
             videoFrameStore.clear()
             statusMessage = "No camera available."
             return
         }
 
-        let pipeline = AutoFramePipeline(
-            settingsProvider: { [weak self] in
-                self?.currentSettings ?? .default
-            },
-            statsStore: statsStore
-        )
-        let videoFrameStore = self.videoFrameStore
-        let previewStream = self.previewStream
-
-        pipeline.onProcessedFrame = { [weak self] frame in
-            videoFrameStore.publish(frame.pixelBuffer)
-            previewStream.enqueue(frame.pixelBuffer)
-
-            Task { @MainActor in
-                guard let self else { return }
-                self.publishFrameStatistics(frame.statistics, hasFace: frame.detectedFace != nil)
-            }
-        }
-
-        do {
-            try pipeline.start(cameraID: selectedCameraID)
-            self.pipeline = pipeline
-            statusMessage = "Preview started."
-        } catch {
-            statusMessage = "Preview failed: \(error)"
-            NSLog("[AutoFrame] Preview failed: %@", "\(error)")
+        runPipelineOperation(activity: .starting, clearsPreview: true) { pipeline in
+            try await pipeline.startAsync(cameraID: settings.cameraID, settings: settings)
         }
     }
 
     func stopPreview() {
-        pipeline?.stop()
-        pipeline = nil
-        previewStream.reset()
-        videoFrameStore.clear()
-        hasPreviewFrame = false
-        previewFPS = 0
-        statusMessage = "Preview stopped."
-    }
+        pipelineOperationTask?.cancel()
+        pipelineOperationTask = nil
+        pipelineActivity = nil
 
-    func persistSettings() {
-        do {
-            try settingsStore.save(currentSettings)
-        } catch {
-            statusMessage = "Failed to save settings: \(error.localizedDescription)"
+        guard let pipeline else {
+            previewStream.reset()
+            videoFrameStore.clear()
+            hasPreviewFrame = false
+            previewFPS = 0
+            statusMessage = "Preview stopped."
+            return
+        }
+
+        pipelineOperationTask = Task { [weak self, pipeline] in
+            await pipeline.stopAsync()
+
+            await MainActor.run {
+                guard let self else { return }
+                self.previewStream.reset()
+                self.videoFrameStore.clear()
+                self.hasPreviewFrame = false
+                self.previewFPS = 0
+                self.statusMessage = "Preview stopped."
+            }
         }
     }
 
-    func applySettings() {
+    func applyCameraSelection() {
         persistSettings()
-        startPreview()
+        let settings = currentSettings
+        runPipelineOperation(activity: .switchingCamera, clearsPreview: false) { pipeline in
+            try await pipeline.reconfigureAsync(cameraID: settings.cameraID, settings: settings)
+        }
+    }
+
+    func applyOutputSelection() {
+        persistSettings()
+        let settings = currentSettings
+        runPipelineOperation(activity: .changingResolution(settings.outputResolution), clearsPreview: false) { pipeline in
+            try await pipeline.reconfigureAsync(cameraID: settings.cameraID, settings: settings)
+        }
+    }
+
+    func persistSettings() {
+        let settings = currentSettings
+        liveSettingsSnapshot.store(settings)
+
+        do {
+            try settingsStore.save(settings)
+        } catch {
+            statusMessage = "Failed to save settings: \(error.localizedDescription)"
+        }
     }
 
     private func requestCameraAccessAndStartPreview() {
@@ -213,6 +272,8 @@ final class AppModel: ObservableObject {
     }
 
     private func publishFrameStatistics(_ frameStatistics: FrameStatistics, hasFace: Bool) {
+        guard pipelineActivity == nil else { return }
+
         let now = CFAbsoluteTimeGetCurrent()
         let faceStateChanged = lastFacePresence != hasFace
 
@@ -227,5 +288,133 @@ final class AppModel: ObservableObject {
         mergedStats.relayFPS = stats.relayFPS
         stats = mergedStats
         statusMessage = hasFace ? "Preview running — tracking face" : "Preview running — no face found"
+    }
+
+    private func makePipelineIfNeeded() -> AutoFramePipeline {
+        if let pipeline {
+            return pipeline
+        }
+
+        let pipeline = AutoFramePipeline(
+            settingsProvider: { [liveSettingsSnapshot] in
+                liveSettingsSnapshot.load()
+            },
+            statsStore: statsStore
+        )
+        let videoFrameStore = self.videoFrameStore
+        let previewStream = self.previewStream
+
+        pipeline.onProcessedFrame = { [weak self] frame in
+            videoFrameStore.publish(frame.pixelBuffer)
+            previewStream.enqueue(frame.pixelBuffer)
+
+            Task { @MainActor in
+                guard let self else { return }
+                self.publishFrameStatistics(frame.statistics, hasFace: frame.detectedFace != nil)
+            }
+        }
+
+        self.pipeline = pipeline
+        return pipeline
+    }
+
+    private func runPipelineOperation(
+        activity: PipelineActivity,
+        clearsPreview: Bool,
+        operation: @escaping @Sendable (AutoFramePipeline) async throws -> Void
+    ) {
+        pipelineOperationTask?.cancel()
+        pipelineOperationID += 1
+        let operationID = pipelineOperationID
+        let pipeline = makePipelineIfNeeded()
+
+        pipelineActivity = activity
+        statusMessage = activity.statusMessage
+
+        if clearsPreview {
+            hasPreviewFrame = false
+            previewFPS = 0
+        }
+
+        pipelineOperationTask = Task { [weak self, pipeline] in
+            do {
+                try await operation(pipeline)
+                await MainActor.run {
+                    guard let self, self.pipelineOperationID == operationID else { return }
+                    self.pipelineActivity = nil
+                    self.statusMessage = "Preview running."
+                }
+            } catch {
+                await MainActor.run {
+                    guard let self, self.pipelineOperationID == operationID else { return }
+                    self.pipelineActivity = nil
+                    self.statusMessage = "Preview failed: \(error)"
+                }
+                NSLog("[AutoFrame] Preview operation failed: %@", "\(error)")
+            }
+        }
+    }
+}
+
+extension AppModel {
+    enum PipelineActivity: Equatable {
+        case starting
+        case switchingCamera
+        case changingResolution(OutputResolution)
+
+        var title: String {
+            switch self {
+            case .starting:
+                return "Starting preview"
+            case .switchingCamera:
+                return "Switching camera"
+            case let .changingResolution(output):
+                return "Applying \(output.displayName)"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .starting:
+                return "Preparing capture session and first frames."
+            case .switchingCamera:
+                return "Reconnecting the selected input and rebuilding the processing graph."
+            case .changingResolution:
+                return "Updating capture format without freezing the whole interface."
+            }
+        }
+
+        var statusMessage: String {
+            "\(title)…"
+        }
+    }
+}
+
+private final class LiveSettingsSnapshot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var settings: AutoFrameSettings
+
+    init(_ settings: AutoFrameSettings) {
+        self.settings = settings
+    }
+
+    func load() -> AutoFrameSettings {
+        lock.withLock {
+            settings
+        }
+    }
+
+    func store(_ settings: AutoFrameSettings) {
+        lock.withLock {
+            self.settings = settings
+        }
+    }
+}
+
+private extension NSLock {
+    func withLock<T>(_ body: () -> T) -> T {
+        lock()
+        defer { unlock() }
+        return body()
     }
 }

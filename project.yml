@@ -82,6 +82,9 @@ targets:
     sources:
       - path: Sources/App
       - path: Assets/Assets.xcassets
+      - path: Assets/topbar-icon@2x.png
+        type: file
+        buildPhase: resources
     attributes:
       SystemCapabilities:
         com.apple.developer.app-groups:

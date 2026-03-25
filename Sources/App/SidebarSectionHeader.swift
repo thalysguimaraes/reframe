@@ -5,8 +5,14 @@ struct SidebarSectionHeader: View {
     let icon: String
 
     var body: some View {
-        Label(title, systemImage: icon)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
+        Label {
+            Text(title)
+                .textCase(.uppercase)
+                .tracking(0.55)
+        } icon: {
+            Image(systemName: icon)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(Theme.textLabel)
     }
 }

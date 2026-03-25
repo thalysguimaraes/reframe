@@ -6,51 +6,7 @@ struct CameraPreviewView: View {
     @ObservedObject var model: AppModel
 
     var body: some View {
-        ZStack {
-            Color.black
-
-            CameraPreviewSurfaceView(previewStream: model.previewStream)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-            if !model.hasPreviewFrame {
-                VStack(spacing: 10) {
-                    Image(systemName: "video.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.white.opacity(0.4))
-                    Text("Waiting for camera frames...")
-                        .foregroundStyle(.white.opacity(0.5))
-                        .font(.title3)
-                }
-            } else {
-                EmptyView()
-            }
-
-            VStack {
-                Spacer()
-                HStack(spacing: 8) {
-                    Button {
-                        model.applySettings()
-                    } label: {
-                        Label("Restart", systemImage: "arrow.clockwise")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-
-                    Button {
-                        model.stopPreview()
-                    } label: {
-                        Label("Stop", systemImage: "stop.fill")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .padding(.bottom, 16)
-            }
-        }
-        .padding(8)
+        CameraPreviewSurfaceView(previewStream: model.previewStream)
     }
 }
 
@@ -78,19 +34,17 @@ private struct CameraPreviewSurfaceView: NSViewRepresentable {
 private final class PreviewContainerView: NSView {
     let displayLayer = AVSampleBufferDisplayLayer()
     weak var previewStream: PreviewStream?
-    private let maskLayer = CAShapeLayer()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         let rootLayer = CALayer()
-        rootLayer.backgroundColor = NSColor.black.cgColor
+        rootLayer.backgroundColor = CGColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
         layer = rootLayer
 
         displayLayer.videoGravity = .resizeAspect
-        displayLayer.backgroundColor = NSColor.black.cgColor
+        displayLayer.backgroundColor = CGColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
         rootLayer.addSublayer(displayLayer)
-        rootLayer.mask = maskLayer
     }
 
     @available(*, unavailable)
@@ -101,12 +55,5 @@ private final class PreviewContainerView: NSView {
     override func layout() {
         super.layout()
         displayLayer.frame = bounds
-        maskLayer.frame = bounds
-        maskLayer.path = CGPath(
-            roundedRect: bounds,
-            cornerWidth: 8,
-            cornerHeight: 8,
-            transform: nil
-        )
     }
 }
