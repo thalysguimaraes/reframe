@@ -15,6 +15,7 @@ enum Theme {
     static let backgroundControlHover = Color.primary.opacity(0.06)
     static let backgroundToggleOff = adaptive(light: 0xC8C4D4, dark: 0x2A2838)
     static let previewOverlay = Color.black.opacity(0.42)
+    static let previewOverlayStroke = Color.white.opacity(0.14)
 
     // MARK: - Text
 
@@ -24,6 +25,9 @@ enum Theme {
     static let textHeading = adaptive(light: 0x1A1824, dark: 0xE8E8F0)
     static let textLabel = adaptive(light: 0x6A6A7A, dark: 0x9A9AAA)
     static let textStatus = adaptive(light: 0x7A7A8A, dark: 0x6A6A7A)
+    static let previewOverlayTextPrimary = Color.white.opacity(0.96)
+    static let previewOverlayTextSecondary = Color.white.opacity(0.82)
+    static let previewOverlayTextShadow = Color.black.opacity(0.32)
 
     // MARK: - Dividers
 
