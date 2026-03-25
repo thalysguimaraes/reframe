@@ -1,10 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'LICENSE'
+      - 'docs/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +26,7 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Build
+      - name: Build App
         run: |
           xcodebuild \
             -project AutoFrameCam.xcodeproj \
@@ -40,18 +43,6 @@ jobs:
             -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             test
-
-  build-cli:
-    name: Build CLI
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        run: xcodegen generate
 
       - name: Build CLI
         run: |
