@@ -141,25 +141,15 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else if !model.hasPreviewFrame {
-                RoundedRectangle(cornerRadius: Theme.previewCornerRadius, style: .continuous)
-                    .fill(Theme.backgroundSidebar)
+                PreviewFeedbackOverlay(model: model)
                     .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .padding(.horizontal, Theme.previewPadding)
                     .padding(.vertical, 8)
-                    .overlay {
-                        VStack(spacing: 10) {
-                            Image(systemName: "video.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(Theme.textTertiary)
-                            Text("Camera Preview")
-                                .foregroundStyle(Theme.textTertiary)
-                                .font(.system(size: 13, design: .rounded))
-                        }
-                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.2), value: model.pipelineActivity)
+        .animation(.easeInOut(duration: 0.2), value: model.previewState)
     }
 
     // MARK: - Status Bar
@@ -188,7 +178,7 @@ struct ContentView: View {
             HStack {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(model.hasPreviewFrame ? Color.green : Theme.textTertiary)
+                        .fill(model.previewStatusIndicatorColor)
                         .frame(width: 7, height: 7)
 
                     Text(model.statusMessage)
@@ -226,6 +216,116 @@ struct ContentView: View {
             Text(value)
                 .foregroundStyle(Theme.textSecondary)
         }
+    }
+}
+
+private struct PreviewFeedbackOverlay: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: Theme.previewCornerRadius, style: .continuous)
+                .fill(Theme.backgroundSidebar)
+
+            VStack(spacing: 18) {
+                icon
+
+                VStack(spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.textHeading)
+
+                    Text(subtitle)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: 420)
+                }
+
+                if case .noSignal = model.previewState {
+                    HStack(spacing: 10) {
+                        Button(model.switchCameraButtonTitle) {
+                            model.switchToSuggestedCamera()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .tint(Theme.accent)
+
+                        if model.suggestedRecoveryCamera != nil {
+                            Button("Retry") {
+                                model.retrySelectedCamera()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                        }
+                    }
+                }
+            }
+            .padding(28)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.previewCornerRadius, style: .continuous)
+                .strokeBorder(borderColor, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        switch model.previewState {
+        case .warmingUp:
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(Theme.accent)
+
+                Image(systemName: "video.badge.ellipsis")
+                    .font(.system(size: 30, weight: .medium))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+        case .noSignal:
+            ZStack {
+                Circle()
+                    .fill(Theme.signalWarningBackground)
+                    .frame(width: 78, height: 78)
+
+                Image(systemName: "camera.badge.exclamationmark")
+                    .font(.system(size: 34, weight: .medium))
+                    .foregroundStyle(Theme.signalWarning)
+            }
+        case .idle, .live:
+            Image(systemName: "video.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(Theme.textTertiary)
+        }
+    }
+
+    private var title: String {
+        switch model.previewState {
+        case .warmingUp:
+            return model.previewWarmupTitle
+        case .noSignal:
+            return model.previewNoSignalTitle
+        case .idle, .live:
+            return "Camera Preview"
+        }
+    }
+
+    private var subtitle: String {
+        switch model.previewState {
+        case .warmingUp:
+            return model.previewWarmupSubtitle
+        case .noSignal:
+            return model.previewNoSignalSubtitle
+        case .idle, .live:
+            return "Select a camera to start the live preview."
+        }
+    }
+
+    private var borderColor: Color {
+        if case .noSignal = model.previewState {
+            return Theme.signalWarningBorder
+        }
+        return Theme.controlBorder
     }
 }
 

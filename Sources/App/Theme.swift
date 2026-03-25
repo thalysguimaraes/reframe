@@ -16,6 +16,7 @@ enum Theme {
     static let backgroundToggleOff = adaptive(light: 0xB2A9C8, dark: 0x2A2838)
     static let previewOverlay = Color.black.opacity(0.42)
     static let previewOverlayStroke = Color.white.opacity(0.14)
+    static let signalWarningBackground = adaptive(lightAlpha: (0xC65D3D, 0.12), darkAlpha: (0xF29A73, 0.18))
 
     // MARK: - Text
 
@@ -28,12 +29,14 @@ enum Theme {
     static let previewOverlayTextPrimary = Color.white.opacity(0.96)
     static let previewOverlayTextSecondary = Color.white.opacity(0.82)
     static let previewOverlayTextShadow = Color.black.opacity(0.32)
+    static let signalWarning = adaptive(light: 0xB14F34, dark: 0xF4A37C)
 
     // MARK: - Dividers
 
     static let divider = adaptive(lightAlpha: (0x000000, 0.10), darkAlpha: (0xFFFFFF, 0.06))
     static let controlBorder = adaptive(lightAlpha: (0x000000, 0.14), darkAlpha: (0xFFFFFF, 0.08))
     static let controlShadow = Color.black.opacity(0.12)
+    static let signalWarningBorder = adaptive(lightAlpha: (0xC65D3D, 0.20), darkAlpha: (0xF29A73, 0.24))
 
     // MARK: - Spacing
 

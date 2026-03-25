@@ -42,6 +42,7 @@ public enum CameraCatalog {
         return CameraDeviceDescriptor(
             uniqueID: device.uniqueID,
             localizedName: device.localizedName,
+            isBuiltIn: device.deviceType == .builtInWideAngleCamera,
             maxResolution: maxResolution,
             maxFrameRate: maxFrameRate
         )
