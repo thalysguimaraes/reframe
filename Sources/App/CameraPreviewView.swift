@@ -47,7 +47,8 @@ private final class PreviewContainerView: NSView {
         rootLayer.masksToBounds = true
         layer = rootLayer
 
-        displayLayer.videoGravity = .resizeAspect
+        // Keep the preview fully covered inside the clipped rounded container.
+        displayLayer.videoGravity = .resizeAspectFill
         displayLayer.backgroundColor = nil
         rootLayer.addSublayer(displayLayer)
     }
