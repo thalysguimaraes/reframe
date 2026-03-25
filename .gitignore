@@ -1,6 +1,7 @@
 .DS_Store
 DerivedData/
 build/
+signed-build/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
 *.swp
