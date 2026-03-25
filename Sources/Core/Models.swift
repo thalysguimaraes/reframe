@@ -151,6 +151,7 @@ public enum PerformancePolicy: String, CaseIterable, Codable, Identifiable, Send
 }
 
 public struct AutoFrameSettings: Codable, Equatable, Sendable {
+    public var hasCompletedOnboarding: Bool
     public var cameraID: String?
     public var outputResolution: OutputResolution
     public var framingPreset: FramingPreset
@@ -173,6 +174,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var sharpness: Double
 
     public init(
+        hasCompletedOnboarding: Bool = false,
         cameraID: String? = nil,
         outputResolution: OutputResolution = .hd1080,
         framingPreset: FramingPreset = .medium,
@@ -194,6 +196,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         saturation: Double = 1.0,
         sharpness: Double = 0.0
     ) {
+        self.hasCompletedOnboarding = hasCompletedOnboarding
         self.cameraID = cameraID
         self.outputResolution = outputResolution
         self.framingPreset = framingPreset
@@ -217,7 +220,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case cameraID, outputResolution, framingPreset, smoothing, zoomStrength, deadZone
+        case hasCompletedOnboarding, cameraID, outputResolution, framingPreset, smoothing, zoomStrength, deadZone
         case trackingEnabled, detectionStride, lostFaceHoldFrames, confidenceThreshold
         case portraitModeEnabled, portraitBlurStrength, performancePolicy
         case exposure, contrast, temperature, tint, vibrance, saturation, sharpness
@@ -226,6 +229,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 
+        hasCompletedOnboarding = try container.decodeIfPresent(Bool.self, forKey: .hasCompletedOnboarding) ?? false
         cameraID = try container.decodeIfPresent(String.self, forKey: .cameraID)
         outputResolution = try container.decodeIfPresent(OutputResolution.self, forKey: .outputResolution) ?? .hd1080
         framingPreset = try container.decodeIfPresent(FramingPreset.self, forKey: .framingPreset) ?? .medium
@@ -250,6 +254,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(hasCompletedOnboarding, forKey: .hasCompletedOnboarding)
         try container.encodeIfPresent(cameraID, forKey: .cameraID)
         try container.encode(outputResolution, forKey: .outputResolution)
         try container.encode(framingPreset, forKey: .framingPreset)

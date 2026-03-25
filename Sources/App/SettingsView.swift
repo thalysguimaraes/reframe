@@ -59,7 +59,16 @@ struct AboutView: View {
                     label: "Virtual camera",
                     subtitle: model.extensionManager.statusMessage
                 ) {
-                    if model.extensionManager.canActivateExtension {
+                    if model.extensionManager.isAwaitingUserApproval {
+                        Button("Open Settings") {
+                            model.openExtensionApprovalSettings()
+                        }
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    } else if model.extensionManager.isInstalled {
+                        statusBadge(title: "Installed")
+                    } else if model.extensionManager.canActivateExtension {
                         Button(model.extensionManager.primaryActionTitle) {
                             model.installExtension()
                         }
@@ -68,8 +77,24 @@ struct AboutView: View {
                         .controlSize(.small)
                         .tint(Theme.accent)
                     } else {
-                        installedBadge
+                        statusBadge(title: "Unavailable")
                     }
+                }
+
+                Divider().overlay(Theme.divider)
+
+                settingsRow(
+                    icon: "sparkles.rectangle.stack",
+                    label: "Onboarding",
+                    subtitle: "Show the first-run setup flow again."
+                ) {
+                    Button("Reset") {
+                        model.resetOnboarding()
+                        dismiss()
+                    }
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
             }
             .background(Theme.backgroundControl, in: RoundedRectangle(cornerRadius: 10))
@@ -82,7 +107,7 @@ struct AboutView: View {
         }
         .fontDesign(.rounded)
         .padding(24)
-        .frame(width: 360, height: 400)
+        .frame(width: 360, height: 440)
         .background(Theme.backgroundWindow)
     }
 
@@ -107,7 +132,7 @@ struct AboutView: View {
                     Text(subtitle)
                         .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
             }
 
@@ -119,13 +144,13 @@ struct AboutView: View {
         .padding(.vertical, 12)
     }
 
-    private var installedBadge: some View {
+    private func statusBadge(title: String) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(Theme.accent)
                 .frame(width: 6, height: 6)
 
-            Text("Installed")
+            Text(title)
                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.textPrimary)
         }

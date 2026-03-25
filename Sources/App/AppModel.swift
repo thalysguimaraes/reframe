@@ -1,11 +1,13 @@
 import AutoFrameCore
 @preconcurrency import AVFoundation
+import AppKit
 import Foundation
 import SwiftUI
 
 @MainActor
 final class AppModel: ObservableObject {
     @Published var cameras: [CameraDeviceDescriptor] = []
+    @Published var hasCompletedOnboarding: Bool
     @Published var selectedCameraID: String?
     @Published var selectedOutput: OutputResolution
     @Published var selectedPreset: FramingPreset
@@ -30,7 +32,9 @@ final class AppModel: ObservableObject {
     @Published var saturation: Double
     @Published var sharpness: Double
     @Published var isAdjustmentsSidebarVisible = true
-    @Published var isDarkMode = true
+    @Published var isDarkMode: Bool
+    @Published var showingOnboarding = false
+    @Published private(set) var cameraAuthorizationStatus: AVAuthorizationStatus
     @Published private(set) var pipelineActivity: PipelineActivity?
 
     let extensionManager = SystemExtensionManager()
@@ -52,6 +56,7 @@ final class AppModel: ObservableObject {
     init() {
         let settings = settingsStore.load()
         self.liveSettingsSnapshot = LiveSettingsSnapshot(settings)
+        self.hasCompletedOnboarding = settings.hasCompletedOnboarding
         self.selectedCameraID = settings.cameraID
         self.selectedOutput = settings.outputResolution
         self.selectedPreset = settings.framingPreset
@@ -68,9 +73,11 @@ final class AppModel: ObservableObject {
         self.vibrance = settings.vibrance
         self.saturation = settings.saturation
         self.sharpness = settings.sharpness
+        self.isDarkMode = Self.systemPrefersDarkMode
         self.stats = statsStore.load() ?? .empty
         self.deadZone = settings.deadZone
         self.performancePolicy = settings.performancePolicy
+        self.cameraAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
         refreshCameras()
 
         previewStream.onFrameEnqueued = { [weak self] fps in
@@ -85,8 +92,13 @@ final class AppModel: ObservableObject {
         pipelineActivity != nil
     }
 
+    private static var systemPrefersDarkMode: Bool {
+        NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+
     var currentSettings: AutoFrameSettings {
         AutoFrameSettings(
+            hasCompletedOnboarding: hasCompletedOnboarding,
             cameraID: selectedCameraID,
             outputResolution: selectedOutput,
             framingPreset: selectedPreset,
@@ -153,10 +165,23 @@ final class AppModel: ObservableObject {
     }
 
     func onAppear() {
-        extensionManager.refreshStatus()
+        refreshOnboardingPrerequisites()
         persistSettings()
         startStatsRefreshTimer()
-        requestCameraAccessAndStartPreview()
+
+        if hasCompletedOnboarding {
+            showingOnboarding = false
+            requestCameraAccessAndStartPreview()
+        } else {
+            showingOnboarding = true
+            if cameraAuthorizationStatus == .authorized {
+                startPreviewIfNeeded()
+            } else if cameraAuthorizationStatus == .denied || cameraAuthorizationStatus == .restricted {
+                statusMessage = "Camera access denied."
+            } else {
+                statusMessage = "Welcome to Reframe."
+            }
+        }
     }
 
     func installExtension() {
@@ -251,15 +276,27 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func requestCameraAccessAndStartPreview() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
+    func refreshOnboardingPrerequisites() {
+        refreshCameraAuthorizationStatus()
+        extensionManager.refreshStatus()
+
+        if cameraAuthorizationStatus == .authorized {
+            startPreviewIfNeeded()
+        }
+    }
+
+    func requestCameraAccessFromOnboarding() {
+        refreshCameraAuthorizationStatus()
+
+        switch cameraAuthorizationStatus {
         case .authorized:
-            startPreview()
+            startPreviewIfNeeded()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 Task { @MainActor in
+                    self.refreshCameraAuthorizationStatus()
                     if granted {
-                        self.startPreview()
+                        self.startPreviewIfNeeded()
                     } else {
                         self.statusMessage = "Camera access denied."
                     }
@@ -268,6 +305,72 @@ final class AppModel: ObservableObject {
         default:
             statusMessage = "Camera access denied."
         }
+    }
+
+    func completeOnboarding() {
+        hasCompletedOnboarding = true
+        showingOnboarding = false
+        persistSettings()
+        refreshOnboardingPrerequisites()
+    }
+
+    func resetOnboarding() {
+        hasCompletedOnboarding = false
+        showingSettings = false
+        showingOnboarding = true
+        persistSettings()
+        refreshOnboardingPrerequisites()
+        if cameraAuthorizationStatus == .notDetermined {
+            stopPreview()
+        }
+    }
+
+    func openCameraPrivacySettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Camera") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    func openExtensionApprovalSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension") {
+            if NSWorkspace.shared.open(url) {
+                return
+            }
+        }
+
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+    }
+
+    func startPreviewIfNeeded() {
+        guard cameraAuthorizationStatus == .authorized else { return }
+        guard pipelineActivity == nil, !hasPreviewFrame else { return }
+        startPreview()
+    }
+
+    private func requestCameraAccessAndStartPreview() {
+        refreshCameraAuthorizationStatus()
+
+        switch cameraAuthorizationStatus {
+        case .authorized:
+            startPreviewIfNeeded()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                Task { @MainActor in
+                    self.refreshCameraAuthorizationStatus()
+                    if granted {
+                        self.startPreviewIfNeeded()
+                    } else {
+                        self.statusMessage = "Camera access denied."
+                    }
+                }
+            }
+        default:
+            statusMessage = "Camera access denied."
+        }
+    }
+
+    private func refreshCameraAuthorizationStatus() {
+        cameraAuthorizationStatus = AVCaptureDevice.authorizationStatus(for: .video)
     }
 
     private func startStatsRefreshTimer() {
