@@ -10,17 +10,280 @@ struct CameraSectionView: View {
         VStack(alignment: .leading, spacing: 8) {
             SidebarSectionHeader(title: "Camera", icon: "video")
 
-            Picker("Source", selection: $model.selectedCameraID) {
-                ForEach(model.cameras) { camera in
-                    Text(camera.label).tag(Optional(camera.uniqueID))
-                }
-            }
-            .labelsHidden()
-            .disabled(model.isPipelineBusy)
-            .onChange(of: model.selectedCameraID) { _ in
+            CameraDropdown(
+                selection: $model.selectedCameraID,
+                cameras: model.cameras
+            ) {
                 model.applyCameraSelection()
             }
+            .disabled(model.isPipelineBusy || model.cameras.isEmpty)
         }
+    }
+}
+
+private struct CameraDropdown: View {
+    @Binding var selection: String?
+    let cameras: [CameraDeviceDescriptor]
+    let onSelection: () -> Void
+
+    @State private var isPresented = false
+    @State private var hoveredCameraID: String?
+    @State private var hoveredTrigger = false
+    @State private var keyboardSelectionID: String?
+    @FocusState private var focusedCameraID: String?
+    @Environment(\.isEnabled) private var isEnabled
+
+    private let popoverWidth = Theme.sidebarWidth - (Theme.sidebarPadding * 2)
+    private let popoverMaxHeight: CGFloat = 248
+
+    private var selectedCamera: CameraDeviceDescriptor? {
+        cameras.first(where: { $0.uniqueID == selection })
+    }
+
+    private var buttonTitle: String {
+        selectedCamera?.localizedName ?? "No camera detected"
+    }
+
+    private var buttonSubtitle: String {
+        selectedCamera?.detailsText ?? "Connect a webcam to continue."
+    }
+
+    var body: some View {
+        Button {
+            toggleDropdown()
+        } label: {
+            triggerLabel
+        }
+        .buttonStyle(SegmentedControlButtonStyle())
+        .onHover { isHovering in
+            hoveredTrigger = isHovering
+        }
+        .onMoveCommand { direction in
+            guard isEnabled else { return }
+            switch direction {
+            case .down:
+                presentDropdown(preferredSelection: selection ?? cameras.first?.uniqueID)
+            case .up:
+                presentDropdown(preferredSelection: selection ?? cameras.last?.uniqueID)
+            default:
+                break
+            }
+        }
+        .popover(isPresented: $isPresented, attachmentAnchor: .rect(.bounds), arrowEdge: .bottom) {
+            popoverContent
+        }
+        .onChange(of: selection) { newValue in
+            keyboardSelectionID = newValue
+        }
+        .onChange(of: cameras.map(\.uniqueID)) { _ in
+            if let selection, !cameras.contains(where: { $0.uniqueID == selection }) {
+                keyboardSelectionID = cameras.first?.uniqueID
+            }
+        }
+        .onChange(of: isEnabled) { enabled in
+            if !enabled {
+                dismissDropdown()
+            }
+        }
+        .accessibilityLabel("Camera source")
+        .accessibilityValue(selectedCamera?.label ?? "No camera selected")
+        .accessibilityHint(cameras.isEmpty ? "No cameras are currently available." : "Opens the camera selector.")
+    }
+
+    private var triggerLabel: some View {
+        let isActive = isPresented || hoveredTrigger
+
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(buttonTitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+
+                Text(buttonSubtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isEnabled ? Theme.textSecondary : Theme.textTertiary)
+                .rotationEffect(.degrees(isPresented ? 180 : 0))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isActive && isEnabled ? Theme.backgroundControlSelected : Theme.backgroundControl)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isPresented ? Theme.accent.opacity(0.3) : Theme.controlBorder, lineWidth: 1)
+        )
+        .shadow(color: isPresented ? Theme.controlShadow.opacity(0.7) : .clear, radius: 12, y: 4)
+        .opacity(isEnabled ? 1 : 0.55)
+        .animation(.spring(response: 0.24, dampingFraction: 0.88), value: isPresented)
+        .animation(.easeInOut(duration: 0.16), value: hoveredTrigger)
+    }
+
+    private var popoverContent: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.vertical, showsIndicators: cameras.count > 4) {
+                LazyVStack(spacing: 4) {
+                    ForEach(cameras) { camera in
+                        Button {
+                            choose(camera)
+                        } label: {
+                            cameraRow(for: camera)
+                        }
+                        .buttonStyle(.plain)
+                        .focusable()
+                        .focused($focusedCameraID, equals: camera.uniqueID)
+                        .id(camera.uniqueID)
+                        .onHover { isHovering in
+                            hoveredCameraID = isHovering ? camera.uniqueID : nil
+                            if isHovering {
+                                keyboardSelectionID = camera.uniqueID
+                            }
+                        }
+                        .accessibilityLabel(camera.localizedName)
+                        .accessibilityValue(camera.detailsText)
+                        .accessibilityHint(selection == camera.uniqueID ? "Selected camera." : "Select camera.")
+                        .accessibilityAddTraits(selection == camera.uniqueID ? .isSelected : [])
+                    }
+                }
+                .padding(6)
+            }
+            .frame(width: popoverWidth)
+            .frame(maxHeight: popoverMaxHeight)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Theme.backgroundSidebar)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Theme.controlBorder, lineWidth: 1)
+            )
+            .shadow(color: Theme.controlShadow.opacity(0.85), radius: 14, y: 6)
+            .onAppear {
+                keyboardSelectionID = keyboardSelectionID ?? selection ?? cameras.first?.uniqueID
+                DispatchQueue.main.async {
+                    focusedCameraID = keyboardSelectionID
+                }
+            }
+            .onChange(of: focusedCameraID) { newValue in
+                if let newValue {
+                    keyboardSelectionID = newValue
+                }
+            }
+            .onChange(of: keyboardSelectionID) { newValue in
+                guard let newValue else { return }
+                withAnimation(.easeInOut(duration: 0.14)) {
+                    proxy.scrollTo(newValue, anchor: .center)
+                }
+                focusedCameraID = newValue
+            }
+            .onMoveCommand(perform: moveSelection)
+            .onExitCommand {
+                dismissDropdown()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cameraRow(for camera: CameraDeviceDescriptor) -> some View {
+        let isSelected = selection == camera.uniqueID
+        let isHighlighted = hoveredCameraID == camera.uniqueID || keyboardSelectionID == camera.uniqueID
+
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(camera.localizedName)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+
+                Text(camera.detailsText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(isSelected ? Theme.textPrimary.opacity(0.82) : Theme.textSecondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(isSelected ? Theme.accent : Theme.textTertiary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(rowBackground(isSelected: isSelected, isHighlighted: isHighlighted))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(isSelected ? Theme.accent.opacity(0.28) : Color.clear, lineWidth: 1)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func rowBackground(isSelected: Bool, isHighlighted: Bool) -> Color {
+        if isSelected {
+            return Theme.backgroundControlSelected
+        }
+        if isHighlighted {
+            return Theme.backgroundControlHover
+        }
+        return .clear
+    }
+
+    private func moveSelection(_ direction: MoveCommandDirection) {
+        guard !cameras.isEmpty else { return }
+
+        let cameraIDs = cameras.map(\.uniqueID)
+        let currentID = keyboardSelectionID ?? selection ?? cameraIDs.first
+        let currentIndex = currentID.flatMap { cameraIDs.firstIndex(of: $0) } ?? 0
+
+        let nextIndex: Int
+        switch direction {
+        case .down:
+            nextIndex = min(currentIndex + 1, cameraIDs.count - 1)
+        case .up:
+            nextIndex = max(currentIndex - 1, 0)
+        default:
+            return
+        }
+
+        keyboardSelectionID = cameraIDs[nextIndex]
+    }
+
+    private func toggleDropdown() {
+        isPresented ? dismissDropdown() : presentDropdown(preferredSelection: selection ?? cameras.first?.uniqueID)
+    }
+
+    private func presentDropdown(preferredSelection: String?) {
+        guard isEnabled, !cameras.isEmpty else { return }
+        hoveredCameraID = nil
+        keyboardSelectionID = preferredSelection ?? cameras.first?.uniqueID
+        isPresented = true
+    }
+
+    private func dismissDropdown() {
+        isPresented = false
+        hoveredCameraID = nil
+    }
+
+    private func choose(_ camera: CameraDeviceDescriptor) {
+        defer { dismissDropdown() }
+
+        guard selection != camera.uniqueID else { return }
+        selection = camera.uniqueID
+        onSelection()
     }
 }
 
@@ -289,6 +552,26 @@ private struct SegmentedControlButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
             .opacity(configuration.isPressed ? 0.92 : 1)
             .animation(.easeInOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private extension CameraDeviceDescriptor {
+    var detailsText: String {
+        let parts = [resolutionText, frameRateText].compactMap { $0 }
+        if parts.isEmpty {
+            return "Specs unavailable"
+        }
+        return parts.joined(separator: " • ")
+    }
+
+    var resolutionText: String? {
+        guard let maxResolution else { return nil }
+        return "\(Int(maxResolution.width))x\(Int(maxResolution.height))"
+    }
+
+    var frameRateText: String? {
+        guard let maxFrameRate else { return nil }
+        return String(format: "%.0f fps", maxFrameRate)
     }
 }
 
