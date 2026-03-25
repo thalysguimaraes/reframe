@@ -24,6 +24,6 @@ struct AutoFrameCamApp: App {
                 }
         }
         .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 1000, height: 650)
+        .defaultSize(width: 440, height: 580)
     }
 }

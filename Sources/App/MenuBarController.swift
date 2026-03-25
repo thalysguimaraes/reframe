@@ -99,6 +99,52 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self?.menuBarController.updateStatusAppearance()
             }
             .store(in: &cancellables)
+
+        // Only resize when the onboarding lifecycle is active: skip the initial
+        // false emission for users who have already completed onboarding so we
+        // don't override their saved window position on every launch.
+        model.$showingOnboarding
+            .removeDuplicates()
+            .drop(while: { !$0 })
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] showing in
+                self?.applyWindowSize(forOnboarding: showing)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func applyWindowSize(forOnboarding isOnboarding: Bool) {
+        guard let window = resolvedMainWindow() else { return }
+
+        if isOnboarding {
+            let size = NSSize(width: 440, height: 580)
+            window.minSize = size
+            window.maxSize = size
+            let screen = window.screen ?? NSScreen.main
+            if let visibleFrame = screen?.visibleFrame {
+                let origin = NSPoint(
+                    x: visibleFrame.midX - size.width / 2,
+                    y: visibleFrame.midY - size.height / 2
+                )
+                window.setFrame(NSRect(origin: origin, size: size), display: true, animate: false)
+            } else {
+                window.setContentSize(size)
+            }
+        } else {
+            let size = NSSize(width: 1000, height: 650)
+            window.minSize = NSSize(width: 900, height: 600)
+            window.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            let screen = window.screen ?? NSScreen.main
+            if let visibleFrame = screen?.visibleFrame {
+                let origin = NSPoint(
+                    x: visibleFrame.midX - size.width / 2,
+                    y: visibleFrame.midY - size.height / 2
+                )
+                window.setFrame(NSRect(origin: origin, size: size), display: true, animate: true)
+            } else {
+                window.setContentSize(size)
+            }
+        }
     }
 
     private func refreshPresentationOptions() {
