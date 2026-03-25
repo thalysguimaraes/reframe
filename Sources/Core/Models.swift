@@ -172,6 +172,9 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var vibrance: Double
     public var saturation: Double
     public var sharpness: Double
+    public var showInMenuBar: Bool
+    public var showDockIcon: Bool
+    public var keepRunningOnClose: Bool
 
     public init(
         hasCompletedOnboarding: Bool = false,
@@ -194,7 +197,10 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         tint: Double = 0.0,
         vibrance: Double = 0.0,
         saturation: Double = 1.0,
-        sharpness: Double = 0.0
+        sharpness: Double = 0.0,
+        showInMenuBar: Bool = true,
+        showDockIcon: Bool = true,
+        keepRunningOnClose: Bool = true
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.cameraID = cameraID
@@ -217,6 +223,9 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         self.vibrance = vibrance
         self.saturation = saturation
         self.sharpness = sharpness
+        self.showInMenuBar = showInMenuBar
+        self.showDockIcon = showDockIcon
+        self.keepRunningOnClose = keepRunningOnClose
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -224,6 +233,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         case trackingEnabled, detectionStride, lostFaceHoldFrames, confidenceThreshold
         case portraitModeEnabled, portraitBlurStrength, performancePolicy
         case exposure, contrast, temperature, tint, vibrance, saturation, sharpness
+        case showInMenuBar, showDockIcon, keepRunningOnClose
     }
 
     public init(from decoder: Decoder) throws {
@@ -250,6 +260,9 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         vibrance = try container.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0.0
         saturation = try container.decodeIfPresent(Double.self, forKey: .saturation) ?? 1.0
         sharpness = try container.decodeIfPresent(Double.self, forKey: .sharpness) ?? 0.0
+        showInMenuBar = try container.decodeIfPresent(Bool.self, forKey: .showInMenuBar) ?? true
+        showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? true
+        keepRunningOnClose = try container.decodeIfPresent(Bool.self, forKey: .keepRunningOnClose) ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -275,6 +288,9 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         try container.encode(vibrance, forKey: .vibrance)
         try container.encode(saturation, forKey: .saturation)
         try container.encode(sharpness, forKey: .sharpness)
+        try container.encode(showInMenuBar, forKey: .showInMenuBar)
+        try container.encode(showDockIcon, forKey: .showDockIcon)
+        try container.encode(keepRunningOnClose, forKey: .keepRunningOnClose)
     }
 
     public static let `default` = AutoFrameSettings()

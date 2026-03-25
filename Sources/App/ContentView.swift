@@ -10,7 +10,7 @@ struct ContentView: View {
         return NSImage(contentsOfFile: path)
     }()
 
-    @StateObject private var model = AppModel()
+    @ObservedObject var model: AppModel
     @State private var iconHovered = false
 
     var body: some View {
