@@ -24,7 +24,7 @@ private enum SystemExtensionRequestKind {
     case properties
 }
 
-private enum ExtensionInstallationState: Equatable {
+enum ExtensionInstallationState: Equatable {
     case unknown
     case readyToInstall
     case awaitingUserApproval(version: String)
@@ -43,11 +43,12 @@ private struct ExtensionPropertiesSnapshot: Sendable {
 @MainActor
 final class SystemExtensionManager: NSObject, ObservableObject {
     @Published private(set) var statusMessage = "Checking virtual camera readiness..."
+    @Published private(set) var hasResolvedStatus = false
+    @Published private(set) var installationState: ExtensionInstallationState = .unknown
 
     private let fileManager: FileManager
     private let mainBundle: Bundle
     private var hasAttemptedAutomaticReplacement = false
-    private var installationState: ExtensionInstallationState = .unknown
     private var requestKinds: [ObjectIdentifier: SystemExtensionRequestKind] = [:]
 
     init(fileManager: FileManager = .default, mainBundle: Bundle = .main) {
@@ -109,12 +110,28 @@ final class SystemExtensionManager: NSObject, ObservableObject {
         }
     }
 
-    func refreshStatus() {
-        if let failure = activationPreflightFailure() {
-            installationState = .unknown
-            statusMessage = failure
-            return
+    var isInstalled: Bool {
+        if case .installed = installationState {
+            return true
         }
+
+        if case .installedDisabled = installationState {
+            return true
+        }
+
+        return false
+    }
+
+    var isAwaitingUserApproval: Bool {
+        if case .awaitingUserApproval = installationState {
+            return true
+        }
+
+        return false
+    }
+
+    func refreshStatus() {
+        hasResolvedStatus = false
 
         let request = OSSystemExtensionRequest.propertiesRequest(
             forExtensionWithIdentifier: AppConstants.extensionBundleIdentifier,
@@ -127,6 +144,7 @@ final class SystemExtensionManager: NSObject, ObservableObject {
 
     func activateExtension() {
         if let failure = activationPreflightFailure() {
+            hasResolvedStatus = true
             updateStatus(failure)
             return
         }
@@ -272,9 +290,11 @@ final class SystemExtensionManager: NSObject, ObservableObject {
     }
 
     private func updateInstalledProperties(_ snapshots: [ExtensionPropertiesSnapshot]) {
+        hasResolvedStatus = true
+
         guard let snapshot = preferredSnapshot(from: snapshots) else {
             installationState = .readyToInstall
-            statusMessage = "Ready to install virtual camera."
+            statusMessage = activationPreflightFailure() ?? "Ready to install virtual camera."
             return
         }
 
@@ -382,6 +402,7 @@ extension SystemExtensionManager: OSSystemExtensionRequestDelegate {
     nonisolated func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            self.hasResolvedStatus = true
             self.installationState = .awaitingUserApproval(version: self.embeddedExtensionVersion())
         }
         updateStatus("Extension approval required in System Settings > General > Login Items & Extensions > Camera Extensions. Camera privacy permission is separate.")
@@ -438,6 +459,7 @@ extension SystemExtensionManager: OSSystemExtensionRequestDelegate {
 
             let kind = self.requestKinds.removeValue(forKey: requestID)
             if case .properties? = kind {
+                self.hasResolvedStatus = true
                 self.statusMessage = statusLookupError
             } else {
                 self.statusMessage = errorMessage

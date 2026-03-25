@@ -14,6 +14,27 @@ struct ContentView: View {
     @State private var iconHovered = false
 
     var body: some View {
+        Group {
+            if model.showingOnboarding {
+                OnboardingView(model: model)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+            } else {
+                mainContent
+            }
+        }
+        .fontDesign(.rounded)
+        .frame(minWidth: 900, minHeight: 600)
+        .background(Theme.backgroundWindow)
+        .preferredColorScheme(model.isDarkMode ? .dark : .light)
+        .onAppear {
+            model.onAppear()
+        }
+        .sheet(isPresented: $model.showingSettings) {
+            AboutView(model: model)
+        }
+    }
+
+    private var mainContent: some View {
         HStack(spacing: 0) {
             if model.isSidebarVisible {
                 SidebarView(model: model)
@@ -30,16 +51,6 @@ struct ContentView: View {
                 AdjustmentsSidebarView(model: model)
                     .transition(.move(edge: .trailing))
             }
-        }
-        .fontDesign(.rounded)
-        .frame(minWidth: 900, minHeight: 600)
-        .background(Theme.backgroundWindow)
-        .preferredColorScheme(model.isDarkMode ? .dark : .light)
-        .onAppear {
-            model.onAppear()
-        }
-        .sheet(isPresented: $model.showingSettings) {
-            AboutView(model: model)
         }
     }
 
