@@ -13,7 +13,7 @@ enum Theme {
     static let backgroundControl = adaptive(light: 0xE5E0EF, dark: 0x232130)
     static let backgroundControlSelected = adaptive(light: 0xB8ACD1, dark: 0x3A3358)
     static let backgroundControlHover = Color.primary.opacity(0.06)
-    static let backgroundToggleOff = adaptive(light: 0xB2A9C8, dark: 0x2A2838)
+    static let backgroundToggleOff = adaptive(light: 0x7A70A8, dark: 0x2A2838)
     static let previewOverlay = Color.black.opacity(0.42)
     static let previewOverlayStroke = Color.white.opacity(0.14)
     static let signalWarningBackground = adaptive(lightAlpha: (0xC65D3D, 0.12), darkAlpha: (0xF29A73, 0.18))
@@ -22,7 +22,7 @@ enum Theme {
 
     static let textPrimary = adaptive(light: 0x2A2838, dark: 0xD8D8E4)
     static let textSecondary = adaptive(light: 0x555164, dark: 0x7A7A8A)
-    static let textTertiary = adaptive(light: 0x666177, dark: 0x5A5A6A)
+    static let textTertiary = adaptive(light: 0x504C63, dark: 0x5A5A6A)
     static let textHeading = adaptive(light: 0x1A1824, dark: 0xE8E8F0)
     static let textLabel = adaptive(light: 0x5A556E, dark: 0x9A9AAA)
     static let textStatus = adaptive(light: 0x625D74, dark: 0x6A6A7A)
