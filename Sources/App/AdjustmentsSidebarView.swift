@@ -1,3 +1,4 @@
+import AutoFrameCore
 import SwiftUI
 
 struct AdjustmentsSidebarView: View {
@@ -38,14 +39,7 @@ struct AdjustmentsSidebarView: View {
                                 format: "%+.1f EV"
                             )
 
-                            adjustmentSlider(
-                                label: "Contrast",
-                                value: $model.contrast,
-                                range: 0.5 ... 2.0,
-                                neutral: 1.0,
-                                format: "%.0f%%",
-                                displayMultiplier: 100
-                            )
+                            contrastSlider
                         }
                     }
 
@@ -187,7 +181,7 @@ struct AdjustmentsSidebarView: View {
             .padding(.horizontal, Theme.sidebarPadding)
     }
 
-    // Standard slider (exposure, contrast, sharpness)
+    // Standard slider (exposure, sharpness)
     private func adjustmentSlider(
         label: String,
         value: Binding<Double>,
@@ -214,6 +208,43 @@ struct AdjustmentsSidebarView: View {
                 .onChange(of: value.wrappedValue) { _ in
                     model.persistSettings()
                 }
+        }
+    }
+
+    private var contrastControlBinding: Binding<Double> {
+        Binding(
+            get: { ContrastControlMapping.controlValue(for: model.contrast) },
+            set: { model.contrast = ContrastControlMapping.contrast(for: $0) }
+        )
+    }
+
+    private var contrastSlider: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Contrast")
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer()
+                Text(model.contrastLabel)
+                    .foregroundStyle(abs(model.contrast - 1.0) < 0.01 ? Theme.textTertiary : Theme.textSecondary)
+                    .monospacedDigit()
+            }
+            .font(.system(size: 12))
+
+            Slider(value: contrastControlBinding, in: ContrastControlMapping.controlRange)
+                .tint(Theme.accent)
+                .onChange(of: model.contrast) { _ in
+                    model.persistSettings()
+                }
+
+            HStack {
+                Text("-50%")
+                Spacer()
+                Text("Neutral")
+                Spacer()
+                Text("+100%")
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(Theme.textTertiary)
         }
     }
 
