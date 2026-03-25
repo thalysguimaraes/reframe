@@ -170,6 +170,6 @@ final class CropEngineTests: XCTestCase {
         let sourceCenterOffset = abs(face.rect.midX - (source.width / 2))
         let cropCenterOffset = abs(face.rect.midX - crop.midX)
 
-        XCTAssertLessThan(cropCenterOffset, sourceCenterOffset * 0.55)
+        XCTAssertLessThan(cropCenterOffset, sourceCenterOffset * 0.72)
     }
 }

@@ -217,6 +217,25 @@ public final class CropEngine {
             center.y += offsetY - thresholdY
         }
 
+        let driftStepX = previousCrop.width * 0.008
+        let driftStepY = previousCrop.height * 0.006
+
+        if abs(offsetX) <= thresholdX, abs(offsetX) > deadZoneX * 0.5 {
+            center.x += clamp(
+                value: offsetX * 0.035,
+                minValue: -driftStepX,
+                maxValue: driftStepX
+            )
+        }
+
+        if abs(offsetY) <= thresholdY, abs(offsetY) > deadZoneY * 0.5 {
+            center.y += clamp(
+                value: offsetY * 0.03,
+                minValue: -driftStepY,
+                maxValue: driftStepY
+            )
+        }
+
         return center
     }
 
@@ -254,32 +273,53 @@ public final class CropEngine {
         smoothing: Double,
         isZoomingOut: Bool
     ) -> CGRect {
-        let baseGain = max(0.06, 1 - smoothing)
+        let smoothingProgress = normalizedSmoothing(for: smoothing)
+        let baseGain = interpolate(
+            from: 0.24,
+            to: 0.035,
+            progress: pow(smoothingProgress, 1.15)
+        )
 
-        // Asymmetric: zoom-in is ~2x faster than zoom-out
+        // Zoom-out should remain notably calmer than zoom-in, especially when
+        // the smoothing slider is near the upper end.
         let sizeGain: CGFloat
         if isZoomingOut {
-            sizeGain = clamp(value: baseGain * 0.45, minValue: 0.03, maxValue: 0.15)
+            sizeGain = clamp(
+                value: baseGain * interpolate(from: 0.42, to: 0.28, progress: smoothingProgress),
+                minValue: 0.015,
+                maxValue: 0.10
+            )
         } else {
-            sizeGain = clamp(value: baseGain + 0.08, minValue: 0.08, maxValue: 0.30)
+            sizeGain = clamp(
+                value: baseGain * interpolate(from: 1.18, to: 0.78, progress: smoothingProgress),
+                minValue: 0.04,
+                maxValue: 0.24
+            )
         }
 
-        // Position gain scales with distance so large movements converge faster
         let currentCenter = CGPoint(x: current.midX, y: current.midY)
         let targetCenter = CGPoint(x: target.midX, y: target.midY)
         let centerDistance = hypot(targetCenter.x - currentCenter.x, targetCenter.y - currentCenter.y)
         let normalizedDistance = centerDistance / max(current.width, 1)
-        let distanceBoost = clamp(value: normalizedDistance * 0.5, minValue: 0, maxValue: 0.15)
+        let distanceBoost = clamp(
+            value: normalizedDistance * interpolate(from: 0.18, to: 0.10, progress: smoothingProgress),
+            minValue: 0,
+            maxValue: interpolate(from: 0.11, to: 0.05, progress: smoothingProgress)
+        )
         let centerGain = clamp(
             value: baseGain + distanceBoost,
-            minValue: 0.06,
-            maxValue: 0.28
+            minValue: 0.025,
+            maxValue: 0.20
         )
 
-        // Step limits prevent single-frame jumps
-        let maxCenterStepX = current.width * 0.10
-        let maxCenterStepY = current.height * 0.08
-        let maxSizeStep = current.height * 0.08
+        // Step limits keep large detections from creating visible single-frame snaps.
+        let maxCenterStepX = current.width * interpolate(from: 0.10, to: 0.03, progress: smoothingProgress)
+        let maxCenterStepY = current.height * interpolate(from: 0.08, to: 0.025, progress: smoothingProgress)
+        let maxSizeStep = current.height * interpolate(
+            from: isZoomingOut ? 0.055 : 0.085,
+            to: isZoomingOut ? 0.018 : 0.035,
+            progress: smoothingProgress
+        )
 
         let deltaX = clamp(
             value: (targetCenter.x - currentCenter.x) * centerGain,
@@ -338,5 +378,13 @@ public final class CropEngine {
 
     private func clamp<T: Comparable>(value: T, minValue: T, maxValue: T) -> T {
         min(max(value, minValue), maxValue)
+    }
+
+    private func normalizedSmoothing(for smoothing: Double) -> CGFloat {
+        CGFloat(clamp(value: (smoothing - 0.45) / 0.5, minValue: 0, maxValue: 1))
+    }
+
+    private func interpolate(from start: CGFloat, to end: CGFloat, progress: CGFloat) -> CGFloat {
+        start + ((end - start) * progress)
     }
 }

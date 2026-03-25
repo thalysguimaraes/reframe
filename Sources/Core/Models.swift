@@ -164,6 +164,13 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var portraitModeEnabled: Bool
     public var portraitBlurStrength: Double
     public var performancePolicy: PerformancePolicy
+    public var exposure: Double
+    public var contrast: Double
+    public var temperature: Double
+    public var tint: Double
+    public var vibrance: Double
+    public var saturation: Double
+    public var sharpness: Double
 
     public init(
         cameraID: String? = nil,
@@ -178,7 +185,14 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         confidenceThreshold: Float = 0.4,
         portraitModeEnabled: Bool = false,
         portraitBlurStrength: Double = 0.5,
-        performancePolicy: PerformancePolicy = .adaptive
+        performancePolicy: PerformancePolicy = .adaptive,
+        exposure: Double = 0.0,
+        contrast: Double = 1.0,
+        temperature: Double = 6500.0,
+        tint: Double = 0.0,
+        vibrance: Double = 0.0,
+        saturation: Double = 1.0,
+        sharpness: Double = 0.0
     ) {
         self.cameraID = cameraID
         self.outputResolution = outputResolution
@@ -193,22 +207,20 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         self.portraitModeEnabled = portraitModeEnabled
         self.portraitBlurStrength = portraitBlurStrength
         self.performancePolicy = performancePolicy
+        self.exposure = exposure
+        self.contrast = contrast
+        self.temperature = temperature
+        self.tint = tint
+        self.vibrance = vibrance
+        self.saturation = saturation
+        self.sharpness = sharpness
     }
 
     private enum CodingKeys: String, CodingKey {
-        case cameraID
-        case outputResolution
-        case framingPreset
-        case smoothing
-        case zoomStrength
-        case deadZone
-        case trackingEnabled
-        case detectionStride
-        case lostFaceHoldFrames
-        case confidenceThreshold
-        case portraitModeEnabled
-        case portraitBlurStrength
-        case performancePolicy
+        case cameraID, outputResolution, framingPreset, smoothing, zoomStrength, deadZone
+        case trackingEnabled, detectionStride, lostFaceHoldFrames, confidenceThreshold
+        case portraitModeEnabled, portraitBlurStrength, performancePolicy
+        case exposure, contrast, temperature, tint, vibrance, saturation, sharpness
     }
 
     public init(from decoder: Decoder) throws {
@@ -227,6 +239,13 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         portraitModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .portraitModeEnabled) ?? false
         portraitBlurStrength = try container.decodeIfPresent(Double.self, forKey: .portraitBlurStrength) ?? 0.5
         performancePolicy = try container.decodeIfPresent(PerformancePolicy.self, forKey: .performancePolicy) ?? .adaptive
+        exposure = try container.decodeIfPresent(Double.self, forKey: .exposure) ?? 0.0
+        contrast = try container.decodeIfPresent(Double.self, forKey: .contrast) ?? 1.0
+        temperature = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 6500.0
+        tint = try container.decodeIfPresent(Double.self, forKey: .tint) ?? 0.0
+        vibrance = try container.decodeIfPresent(Double.self, forKey: .vibrance) ?? 0.0
+        saturation = try container.decodeIfPresent(Double.self, forKey: .saturation) ?? 1.0
+        sharpness = try container.decodeIfPresent(Double.self, forKey: .sharpness) ?? 0.0
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -244,6 +263,13 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         try container.encode(portraitModeEnabled, forKey: .portraitModeEnabled)
         try container.encode(portraitBlurStrength, forKey: .portraitBlurStrength)
         try container.encode(performancePolicy, forKey: .performancePolicy)
+        try container.encode(exposure, forKey: .exposure)
+        try container.encode(contrast, forKey: .contrast)
+        try container.encode(temperature, forKey: .temperature)
+        try container.encode(tint, forKey: .tint)
+        try container.encode(vibrance, forKey: .vibrance)
+        try container.encode(saturation, forKey: .saturation)
+        try container.encode(sharpness, forKey: .sharpness)
     }
 
     public static let `default` = AutoFrameSettings()

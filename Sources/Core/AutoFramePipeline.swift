@@ -13,6 +13,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
     private let faceStabilizer = FaceObservationStabilizer()
     private let cropEngine = CropEngine()
     private let reframer = PixelBufferReframer()
+    private let imageAdjustmentCompositor = ImageAdjustmentCompositor()
     private let portraitCompositor = PortraitCompositor()
     private let captureQueue = DispatchQueue(label: "dev.autoframe.pipeline.capture", qos: .userInitiated)
     private let captureStateQueue = DispatchQueue(label: "dev.autoframe.pipeline.capture-state", qos: .userInitiated)
@@ -23,6 +24,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
     private let videoOutput = AVCaptureVideoDataOutput()
 
     private var currentCameraID: String?
+    private var currentOutputResolution: OutputResolution?
     private var activeCaptureDevice: AVCaptureDevice?
     private var pendingSampleBuffer: CMSampleBuffer?
     private var isProcessingFrame = false
@@ -47,28 +49,27 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
     }
 
     public func start(cameraID: String? = nil) throws {
-        let activeCameraID = cameraID ?? settingsProvider().cameraID
+        let settings = settingsProvider()
+        let activeCameraID = cameraID ?? settings.cameraID
         try sessionQueue.sync {
-            if session.isRunning, currentCameraID == activeCameraID {
-                return
-            }
+            try startLocked(cameraID: activeCameraID, settings: settings)
+        }
+    }
 
-            let settings = settingsProvider()
-            stopLocked()
-            let device = try configureSession(cameraID: activeCameraID, settings: settings)
-            cropEngine.reset()
-            faceStabilizer.reset()
-            consecutiveDetectionMisses = 0
-            do {
-                session.startRunning()
-                try applyCaptureFormat(to: device, settings: settings)
-            } catch {
-                if session.isRunning {
-                    session.stopRunning()
+    public func startAsync(
+        cameraID: String? = nil,
+        settings: AutoFrameSettings
+    ) async throws {
+        let activeCameraID = cameraID ?? settings.cameraID
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    try self.startLocked(cameraID: activeCameraID, settings: settings)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
                 }
-                throw error
             }
-            currentCameraID = activeCameraID
         }
     }
 
@@ -76,6 +77,95 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
         sessionQueue.sync {
             stopLocked()
         }
+    }
+
+    public func stopAsync() async {
+        await withCheckedContinuation { continuation in
+            sessionQueue.async {
+                self.stopLocked()
+                continuation.resume()
+            }
+        }
+    }
+
+    public func reconfigure(cameraID: String? = nil, settings: AutoFrameSettings) throws {
+        let activeCameraID = cameraID ?? settings.cameraID
+        try sessionQueue.sync {
+            try reconfigureLocked(cameraID: activeCameraID, settings: settings)
+        }
+    }
+
+    public func reconfigureAsync(
+        cameraID: String? = nil,
+        settings: AutoFrameSettings
+    ) async throws {
+        let activeCameraID = cameraID ?? settings.cameraID
+        try await withCheckedThrowingContinuation { continuation in
+            sessionQueue.async {
+                do {
+                    try self.reconfigureLocked(cameraID: activeCameraID, settings: settings)
+                    continuation.resume()
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    private func startLocked(cameraID: String?, settings: AutoFrameSettings) throws {
+        if session.isRunning,
+           currentCameraID == cameraID,
+           currentOutputResolution == settings.outputResolution {
+            return
+        }
+
+        stopLocked()
+        let device = try configureSession(cameraID: cameraID, settings: settings)
+        resetTrackingState()
+        do {
+            session.startRunning()
+            try applyCaptureFormat(to: device, settings: settings)
+        } catch {
+            if session.isRunning {
+                session.stopRunning()
+            }
+            throw error
+        }
+        currentCameraID = cameraID
+        currentOutputResolution = settings.outputResolution
+    }
+
+    private func reconfigureLocked(cameraID: String?, settings: AutoFrameSettings) throws {
+        guard session.isRunning else {
+            try startLocked(cameraID: cameraID, settings: settings)
+            return
+        }
+
+        if currentCameraID != cameraID {
+            try startLocked(cameraID: cameraID, settings: settings)
+            return
+        }
+
+        guard let device = activeCaptureDevice else {
+            try startLocked(cameraID: cameraID, settings: settings)
+            return
+        }
+
+        guard currentOutputResolution != settings.outputResolution else {
+            return
+        }
+
+        session.beginConfiguration()
+        session.sessionPreset = supportedSessionPreset(for: session, outputResolution: settings.outputResolution)
+        session.commitConfiguration()
+
+        captureStateQueue.sync {
+            pendingSampleBuffer = nil
+        }
+
+        resetTrackingState()
+        try applyCaptureFormat(to: device, settings: settings)
+        currentOutputResolution = settings.outputResolution
     }
 
     private func stopLocked() {
@@ -93,22 +183,11 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
         }
 
         processingQueue.sync {
-            cropEngine.reset()
-            faceStabilizer.reset()
-            portraitCompositor.reset()
-            adaptiveQualityController.reset()
-            frameIndex = 0
-            lastDetectedFace = nil
-            consecutiveDetectionMisses = 0
-            sourceUsesHardwareCenterStage = false
-            currentTargetFrameRate = OutputResolution.hd1080.preferredFrameRate
-            currentProcessingProfile = .default
-            processingFPSWindow.removeAll(keepingCapacity: true)
-            isReconfiguringCaptureFormat = false
-            hasAppliedCaptureFallback = false
+            resetProcessingState()
         }
 
         currentCameraID = nil
+        currentOutputResolution = nil
         activeCaptureDevice = nil
     }
 
@@ -224,6 +303,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
             processingFPSWindow.removeAll(keepingCapacity: true)
             hasAppliedCaptureFallback = frameTiming.frameRate <= settings.outputResolution.fallbackFrameRate + 0.5
         }
+        currentOutputResolution = settings.outputResolution
     }
 
     private func supportedSessionPreset(
@@ -325,25 +405,38 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
             height: CVPixelBufferGetHeight(sourceBuffer)
         )
 
-        let shouldDetect = settings.trackingEnabled && (frameIndex % max(processingProfile.detectionStride, 1) == 0 || frameIndex == 1)
-        let freshDetection = shouldDetect ? detectFaceIfNeeded(in: sourceBuffer, settings: settings) : nil
+        let shouldRedetect = settings.trackingEnabled
+            && (frameIndex % max(processingProfile.detectionStride, 1) == 0 || frameIndex == 1 || lastDetectedFace == nil)
+        let observedFace = observeFaceIfNeeded(
+            in: sourceBuffer,
+            settings: settings,
+            prefersFreshDetection: shouldRedetect
+        )
         let face: DetectedFace?
-        if let freshDetection {
+        if let observedFace {
             consecutiveDetectionMisses = 0
-            let stabilizedFace = faceStabilizer.ingest(freshDetection)
+            let stabilizedFace = faceStabilizer.ingest(
+                observedFace,
+                smoothing: settings.smoothing
+            )
             lastDetectedFace = stabilizedFace
             face = stabilizedFace
-        } else if shouldDetect {
+        } else if settings.trackingEnabled {
             consecutiveDetectionMisses += 1
             if consecutiveDetectionMisses <= 2, let lastDetectedFace {
                 face = lastDetectedFace
             } else {
                 lastDetectedFace = nil
                 faceStabilizer.reset()
+                faceDetector.reset()
                 face = nil
             }
         } else {
-            face = lastDetectedFace
+            consecutiveDetectionMisses = 0
+            lastDetectedFace = nil
+            faceStabilizer.reset()
+            faceDetector.reset()
+            face = nil
         }
         let cropRect = cropEngine.nextCrop(sourceSize: sourceSize, detectedFace: face, settings: settings)
 
@@ -355,16 +448,19 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
             return
         }
 
-        // Portrait mode: apply person segmentation + background blur on the reframed output.
+        // Image adjustments: exposure, contrast, white balance, vibrance, saturation, sharpness.
+        let adjustedBuffer = imageAdjustmentCompositor.apply(to: reframedBuffer, settings: settings) ?? reframedBuffer
+
+        // Portrait mode: apply person segmentation + background blur.
         let outputBuffer: CVPixelBuffer
         if settings.portraitModeEnabled && !processingProfile.disablesPortraitEffects {
             outputBuffer = portraitCompositor.apply(
-                to: reframedBuffer,
+                to: adjustedBuffer,
                 blurStrength: settings.portraitBlurStrength,
                 profile: processingProfile
-            ) ?? reframedBuffer
+            ) ?? adjustedBuffer
         } else {
-            outputBuffer = reframedBuffer
+            outputBuffer = adjustedBuffer
         }
 
         let processingEnd = CFAbsoluteTimeGetCurrent()
@@ -424,10 +520,17 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
         }
     }
 
-    private func detectFaceIfNeeded(in pixelBuffer: CVPixelBuffer, settings: AutoFrameSettings) -> DetectedFace? {
+    private func observeFaceIfNeeded(
+        in pixelBuffer: CVPixelBuffer,
+        settings: AutoFrameSettings,
+        prefersFreshDetection: Bool
+    ) -> DetectedFace? {
         guard settings.trackingEnabled else { return nil }
         do {
-            return try faceDetector.detectLargestFace(in: pixelBuffer)
+            return try faceDetector.observeLargestFace(
+                in: pixelBuffer,
+                prefersFreshDetection: prefersFreshDetection
+            )
         } catch {
             if frameIndex <= 3 {
                 NSLog("[AutoFrame] Face detection error: %@", "\(error)")
@@ -488,6 +591,40 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
             return Double(timestamps.count)
         }
         return Double(timestamps.count - 1) / (last - first)
+    }
+
+    private func resetTrackingState() {
+        captureStateQueue.sync {
+            pendingSampleBuffer = nil
+        }
+
+        processingQueue.sync {
+            cropEngine.reset()
+            faceStabilizer.reset()
+            faceDetector.reset()
+            portraitCompositor.reset()
+            imageAdjustmentCompositor.reset()
+            lastDetectedFace = nil
+            consecutiveDetectionMisses = 0
+        }
+    }
+
+    private func resetProcessingState() {
+        cropEngine.reset()
+        faceStabilizer.reset()
+        faceDetector.reset()
+        portraitCompositor.reset()
+        imageAdjustmentCompositor.reset()
+        adaptiveQualityController.reset()
+        frameIndex = 0
+        lastDetectedFace = nil
+        consecutiveDetectionMisses = 0
+        sourceUsesHardwareCenterStage = false
+        currentTargetFrameRate = OutputResolution.hd1080.preferredFrameRate
+        currentProcessingProfile = .default
+        processingFPSWindow.removeAll(keepingCapacity: true)
+        isReconfiguringCaptureFormat = false
+        hasAppliedCaptureFallback = false
     }
 }
 

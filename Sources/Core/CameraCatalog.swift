@@ -48,7 +48,24 @@ public enum CameraCatalog {
     }
 
     private static func isVirtualAutoFrameCamera(_ device: AVCaptureDevice) -> Bool {
-        device.localizedName == AppConstants.virtualCameraName
+        let normalizedName = normalized(device.localizedName)
+        let normalizedManufacturer = normalized(device.manufacturer)
+        let normalizedModel = normalized(device.modelID)
+        let normalizedUniqueID = normalized(device.uniqueID)
+
+        let knownNames = Set(([AppConstants.virtualCameraName] + AppConstants.legacyVirtualCameraNames).map(normalized))
+        let knownManufacturers = Set(AppConstants.virtualCameraManufacturers.map(normalized))
+        let knownModels = AppConstants.virtualCameraModelNames.map(normalized)
+
+        if knownNames.contains(normalizedName) || knownNames.contains(normalizedUniqueID) {
+            return true
+        }
+
+        if knownManufacturers.contains(normalizedManufacturer) {
+            return true
+        }
+
+        return knownModels.contains { normalizedModel.contains($0) }
     }
 
     private static let discoverySession = AVCaptureDevice.DiscoverySession(
@@ -56,4 +73,10 @@ public enum CameraCatalog {
         mediaType: .video,
         position: .unspecified
     )
+
+    private static func normalized(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }
