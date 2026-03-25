@@ -284,6 +284,7 @@ public struct CameraDeviceDescriptor: Identifiable, Codable, Equatable, Sendable
     public var id: String { uniqueID }
     public let uniqueID: String
     public let localizedName: String
+    public let isBuiltIn: Bool
     public let maxResolution: CGSize?
     public let maxFrameRate: Double?
 

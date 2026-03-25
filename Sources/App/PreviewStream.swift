@@ -3,7 +3,7 @@ import AutoFrameCore
 import Foundation
 
 final class PreviewStream: @unchecked Sendable {
-    var onFrameEnqueued: (@Sendable (Double) -> Void)?
+    var onFrameEnqueued: (@Sendable (Double, CFAbsoluteTime) -> Void)?
 
     private weak var displayLayer: AVSampleBufferDisplayLayer?
     private let queue = DispatchQueue(label: "dev.autoframe.preview.stream", qos: .userInteractive)
@@ -75,7 +75,7 @@ final class PreviewStream: @unchecked Sendable {
 
             self.hasDeliveredFirstFrame = true
             self.lastMetricsReportTime = now
-            self.onFrameEnqueued?(self.rollingFPS(from: self.fpsWindow))
+            self.onFrameEnqueued?(self.rollingFPS(from: self.fpsWindow), now)
         }
     }
 
