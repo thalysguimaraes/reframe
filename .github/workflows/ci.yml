@@ -30,7 +30,7 @@ jobs:
         run: |
           xcodebuild \
             -project AutoFrameCam.xcodeproj \
-            -scheme "AutoFrame Cam" \
+            -scheme "Reframe" \
             -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             build
@@ -39,7 +39,7 @@ jobs:
         run: |
           xcodebuild \
             -project AutoFrameCam.xcodeproj \
-            -scheme "AutoFrame Cam" \
+            -scheme "Reframe" \
             -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             test
