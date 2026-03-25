@@ -20,10 +20,10 @@ struct ContentView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.98)))
             } else {
                 mainContent
+                    .frame(minWidth: 900, minHeight: 600)
             }
         }
         .fontDesign(.rounded)
-        .frame(minWidth: 900, minHeight: 600)
         .background(Theme.backgroundWindow)
         .preferredColorScheme(model.isDarkMode ? .dark : .light)
         .onAppear {
