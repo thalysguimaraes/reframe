@@ -341,9 +341,8 @@ struct TrackingSectionView: View {
                 SidebarSectionHeader(title: "Tracking", icon: "person.crop.rectangle")
                 Spacer()
                 Toggle("", isOn: $model.trackingEnabled)
-                    .toggleStyle(.switch)
+                    .toggleStyle(ControlSurfaceToggleStyle())
                     .labelsHidden()
-                    .tint(Theme.accent)
                     .onChange(of: model.trackingEnabled) { _ in
                         model.persistSettings()
                     }
@@ -390,9 +389,8 @@ struct ZoomSectionView: View {
                 SidebarSectionHeader(title: "Zoom", icon: "magnifyingglass")
                 Spacer()
                 Toggle("", isOn: $model.zoomEnabled)
-                    .toggleStyle(.switch)
+                    .toggleStyle(ControlSurfaceToggleStyle())
                     .labelsHidden()
-                    .tint(Theme.accent)
                     .onChange(of: model.zoomEnabled) { newValue in
                         if !newValue {
                             model.zoomStrength = 0
@@ -443,9 +441,8 @@ struct PortraitSectionView: View {
                 SidebarSectionHeader(title: "Portrait", icon: "person.and.background.dotted")
                 Spacer()
                 Toggle("", isOn: $model.portraitModeEnabled)
-                    .toggleStyle(.switch)
+                    .toggleStyle(ControlSurfaceToggleStyle())
                     .labelsHidden()
-                    .tint(Theme.accent)
                     .onChange(of: model.portraitModeEnabled) { _ in
                         model.persistSettings()
                     }
@@ -527,6 +524,10 @@ struct SegmentedControl<T: Hashable & Identifiable>: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Theme.backgroundControlSelected)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .strokeBorder(Theme.controlBorder, lineWidth: 1)
+                    )
                     .shadow(color: Theme.controlShadow, radius: 10, y: 3)
                     .matchedGeometryEffect(id: "selected-segment", in: selectionNamespace)
             } else if isHovered && isEnabled {

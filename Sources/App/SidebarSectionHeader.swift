@@ -12,7 +12,7 @@ struct SidebarSectionHeader: View {
         } icon: {
             Image(systemName: icon)
         }
-        .font(.system(size: 11))
+        .font(.system(size: 11, weight: .semibold))
         .foregroundStyle(Theme.textLabel)
     }
 }

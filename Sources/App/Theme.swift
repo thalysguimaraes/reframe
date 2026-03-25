@@ -10,29 +10,29 @@ enum Theme {
 
     static let backgroundWindow = adaptive(light: 0xF4F1F8, dark: 0x1A1824)
     static let backgroundSidebar = adaptive(light: 0xEAE6F2, dark: 0x0A0A12)
-    static let backgroundControl = adaptive(light: 0xDDD8E8, dark: 0x232130)
-    static let backgroundControlSelected = adaptive(light: 0xCFC8E0, dark: 0x3A3358)
+    static let backgroundControl = adaptive(light: 0xE5E0EF, dark: 0x232130)
+    static let backgroundControlSelected = adaptive(light: 0xB8ACD1, dark: 0x3A3358)
     static let backgroundControlHover = Color.primary.opacity(0.06)
-    static let backgroundToggleOff = adaptive(light: 0xC8C4D4, dark: 0x2A2838)
+    static let backgroundToggleOff = adaptive(light: 0xB2A9C8, dark: 0x2A2838)
     static let previewOverlay = Color.black.opacity(0.42)
     static let previewOverlayStroke = Color.white.opacity(0.14)
 
     // MARK: - Text
 
     static let textPrimary = adaptive(light: 0x2A2838, dark: 0xD8D8E4)
-    static let textSecondary = adaptive(light: 0x6A6A7A, dark: 0x7A7A8A)
-    static let textTertiary = adaptive(light: 0x9A9AAA, dark: 0x5A5A6A)
+    static let textSecondary = adaptive(light: 0x555164, dark: 0x7A7A8A)
+    static let textTertiary = adaptive(light: 0x666177, dark: 0x5A5A6A)
     static let textHeading = adaptive(light: 0x1A1824, dark: 0xE8E8F0)
-    static let textLabel = adaptive(light: 0x6A6A7A, dark: 0x9A9AAA)
-    static let textStatus = adaptive(light: 0x7A7A8A, dark: 0x6A6A7A)
+    static let textLabel = adaptive(light: 0x5A556E, dark: 0x9A9AAA)
+    static let textStatus = adaptive(light: 0x625D74, dark: 0x6A6A7A)
     static let previewOverlayTextPrimary = Color.white.opacity(0.96)
     static let previewOverlayTextSecondary = Color.white.opacity(0.82)
     static let previewOverlayTextShadow = Color.black.opacity(0.32)
 
     // MARK: - Dividers
 
-    static let divider = adaptive(lightAlpha: (0x000000, 0.08), darkAlpha: (0xFFFFFF, 0.06))
-    static let controlBorder = adaptive(lightAlpha: (0x000000, 0.10), darkAlpha: (0xFFFFFF, 0.08))
+    static let divider = adaptive(lightAlpha: (0x000000, 0.10), darkAlpha: (0xFFFFFF, 0.06))
+    static let controlBorder = adaptive(lightAlpha: (0x000000, 0.14), darkAlpha: (0xFFFFFF, 0.08))
     static let controlShadow = Color.black.opacity(0.12)
 
     // MARK: - Spacing
