@@ -104,46 +104,10 @@ struct AboutView: View {
                 settingsRow(
                     icon: "web.camera",
                     label: "Virtual camera",
-                    subtitle: model.extensionManager.statusMessage
+                    subtitle: model.extensionManager.statusMessage,
+                    subtitleLineLimit: 3
                 ) {
-                    if model.extensionManager.isAwaitingUserApproval {
-                        Button("Open Settings") {
-                            model.openExtensionApprovalSettings()
-                        }
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    } else if model.extensionManager.isInstalled {
-                        statusBadge(title: "Installed")
-                    } else if model.extensionManager.canActivateExtension {
-                        Button(model.extensionManager.primaryActionTitle) {
-                            model.installExtension()
-                        }
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .tint(Theme.accent)
-                    } else {
-                        statusBadge(title: "Unavailable")
-                    }
-                }
-
-                Rectangle()
-                    .fill(Theme.divider)
-                    .frame(height: 1)
-
-                settingsRow(
-                    icon: "sparkles.rectangle.stack",
-                    label: "Onboarding",
-                    subtitle: "Show the first-run setup flow again."
-                ) {
-                    Button("Reset") {
-                        model.resetOnboarding()
-                        dismiss()
-                    }
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                    virtualCameraTrailingControls()
                 }
             }
             .background(Theme.backgroundControl, in: RoundedRectangle(cornerRadius: 10))
@@ -174,6 +138,7 @@ struct AboutView: View {
         icon: String,
         label: String,
         subtitle: String? = nil,
+        subtitleLineLimit: Int = 2,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
         HStack(spacing: 10) {
@@ -191,7 +156,7 @@ struct AboutView: View {
                     Text(subtitle)
                         .font(.system(size: 10, design: .rounded))
                         .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(2)
+                        .lineLimit(subtitleLineLimit)
                 }
             }
 
@@ -203,7 +168,99 @@ struct AboutView: View {
         .padding(.vertical, 12)
     }
 
-    private func statusBadge(title: String) -> some View {
+    @ViewBuilder
+    private func virtualCameraTrailingControls() -> some View {
+        switch model.extensionManager.requestState {
+        case .installing:
+            statusBadge(title: "Installing")
+        case .reinstalling:
+            statusBadge(title: "Reinstalling")
+        case .uninstalling:
+            statusBadge(title: "Removing", background: Theme.signalWarning)
+        case .checking where !model.extensionManager.hasResolvedStatus:
+            statusBadge(title: "Checking", background: Theme.backgroundControlSelected)
+        case .idle, .checking:
+            switch model.extensionManager.installationState {
+            case .awaitingUserApproval:
+                HStack(spacing: 8) {
+                    statusBadge(title: "Approval", background: Theme.signalWarning)
+                    settingsActionButton("Open Settings") {
+                        model.openExtensionApprovalSettings()
+                    }
+                }
+            case .installed:
+                HStack(spacing: 8) {
+                    statusBadge(title: "Installed")
+                    settingsActionButton(
+                        "Reinstall",
+                        disabled: !model.extensionManager.canReinstallExtension
+                    ) {
+                        model.reinstallExtension()
+                    }
+                }
+            case .installedDisabled:
+                HStack(spacing: 8) {
+                    statusBadge(title: "Disabled", background: Theme.signalWarning)
+                    settingsActionButton("Enable in Settings") {
+                        model.openExtensionApprovalSettings()
+                    }
+                }
+            case .readyToInstall:
+                settingsActionButton(
+                    "Install",
+                    prominent: true,
+                    disabled: !model.extensionManager.canActivateExtension
+                ) {
+                    model.installExtension()
+                }
+            case .uninstalling:
+                HStack(spacing: 8) {
+                    statusBadge(title: "Replacing")
+                    settingsActionButton(
+                        "Reinstall",
+                        disabled: !model.extensionManager.canReinstallExtension
+                    ) {
+                        model.reinstallExtension()
+                    }
+                }
+            case .unknown:
+                if model.extensionManager.hasResolvedStatus && model.extensionManager.canActivateExtension {
+                    settingsActionButton("Install", prominent: true) {
+                        model.installExtension()
+                    }
+                } else if model.extensionManager.hasResolvedStatus {
+                    statusBadge(title: "Unavailable", background: Theme.signalWarning)
+                } else {
+                    statusBadge(title: "Checking", background: Theme.backgroundControlSelected)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func settingsActionButton(
+        _ title: String,
+        prominent: Bool = false,
+        disabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        if prominent {
+            Button(title, action: action)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Theme.accent)
+                .disabled(disabled)
+        } else {
+            Button(title, action: action)
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(disabled)
+        }
+    }
+
+    private func statusBadge(title: String, background: Color = Theme.accent) -> some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(Color.white.opacity(0.8))
@@ -215,6 +272,6 @@ struct AboutView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Theme.accent, in: Capsule())
+        .background(background, in: Capsule())
     }
 }
