@@ -6,17 +6,22 @@ struct MiniPreviewView: View {
     let onExpand: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
+        VStack(spacing: 0) {
             previewCard
-            cameraSection
-            quickToggles
-            framingSection
-            expandButton
+
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                cameraSection
+                quickToggles
+                framingSection
+                expandButton
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 16)
         }
-        .padding(16)
         .frame(width: 320)
-        .background(Theme.backgroundWindow)
+        .background(.ultraThinMaterial)
         .preferredColorScheme(model.isDarkMode ? .dark : .light)
     }
 
@@ -58,7 +63,6 @@ struct MiniPreviewView: View {
         ZStack {
             CameraPreviewView(model: model)
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             if let activity = model.pipelineActivity {
                 MiniPipelineOverlay(activity: activity)
@@ -67,11 +71,8 @@ struct MiniPreviewView: View {
             }
         }
         .aspectRatio(16.0 / 9.0, contentMode: .fit)
-        .background(Theme.backgroundSidebar, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Theme.controlBorder, lineWidth: 1)
-        )
+        .background(Theme.backgroundSidebar)
+        .clipped()
     }
 
     private var cameraSection: some View {
@@ -110,8 +111,9 @@ struct MiniPreviewView: View {
     }
 
     private var framingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 8) {
             MiniSectionLabel(title: "Framing")
+                .frame(maxWidth: .infinity, alignment: .center)
 
             SegmentedControl(
                 selection: $model.selectedPreset,
@@ -126,19 +128,16 @@ struct MiniPreviewView: View {
 
     private var expandButton: some View {
         Button(action: onExpand) {
-            HStack(spacing: 8) {
-                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                    .font(.system(size: 12, weight: .semibold))
-
+            HStack(spacing: 4) {
                 Text("Open Full App")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, design: .rounded))
+                Image(systemName: "arrow.up.forward")
+                    .font(.system(size: 10, weight: .medium))
             }
+            .foregroundStyle(Theme.accent)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.large)
-        .tint(Theme.accent)
+        .buttonStyle(.plain)
     }
 }
 
@@ -268,8 +267,7 @@ private struct MiniPipelineOverlay: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Theme.previewOverlay)
+            Theme.previewOverlay
 
             VStack(spacing: 10) {
                 ProgressView()

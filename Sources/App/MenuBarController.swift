@@ -142,7 +142,7 @@ final class MenuBarController: NSObject {
 
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 320, height: 430)
+        popover.contentSize = NSSize(width: 320, height: 500)
 
         let hostingController = NSHostingController(
             rootView: MiniPreviewView(model: model) { [weak self] in
