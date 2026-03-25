@@ -33,6 +33,14 @@ enum ExtensionInstallationState: Equatable {
     case uninstalling(version: String)
 }
 
+enum ExtensionRequestState: Equatable {
+    case idle
+    case checking
+    case installing
+    case reinstalling
+    case uninstalling
+}
+
 private struct ExtensionPropertiesSnapshot: Sendable {
     let bundleVersion: String
     let isEnabled: Bool
@@ -45,6 +53,7 @@ final class SystemExtensionManager: NSObject, ObservableObject {
     @Published private(set) var statusMessage = "Checking virtual camera readiness..."
     @Published private(set) var hasResolvedStatus = false
     @Published private(set) var installationState: ExtensionInstallationState = .unknown
+    @Published private(set) var requestState: ExtensionRequestState = .checking
 
     private let fileManager: FileManager
     private let mainBundle: Bundle
@@ -87,6 +96,10 @@ final class SystemExtensionManager: NSObject, ObservableObject {
             return false
         }
 
+        guard !isRequestInFlight else {
+            return false
+        }
+
         switch installationState {
         case .unknown, .readyToInstall, .installedDisabled, .uninstalling:
             return true
@@ -99,6 +112,10 @@ final class SystemExtensionManager: NSObject, ObservableObject {
 
     var canDeactivateExtension: Bool {
         guard embeddedExtensionBundle() != nil else {
+            return false
+        }
+
+        guard !isRequestInFlight else {
             return false
         }
 
@@ -130,8 +147,38 @@ final class SystemExtensionManager: NSObject, ObservableObject {
         return false
     }
 
+    var canReinstallExtension: Bool {
+        guard activationPreflightFailure() == nil else {
+            return false
+        }
+
+        guard !isRequestInFlight else {
+            return false
+        }
+
+        switch installationState {
+        case .installed, .uninstalling:
+            return true
+        case .unknown, .readyToInstall, .awaitingUserApproval, .installedDisabled:
+            return false
+        }
+    }
+
+    var isRequestInFlight: Bool {
+        switch requestState {
+        case .installing, .reinstalling, .uninstalling:
+            return true
+        case .idle, .checking:
+            return false
+        }
+    }
+
     func refreshStatus() {
         hasResolvedStatus = false
+
+        if !isRequestInFlight {
+            requestState = .checking
+        }
 
         let request = OSSystemExtensionRequest.propertiesRequest(
             forExtensionWithIdentifier: AppConstants.extensionBundleIdentifier,
@@ -145,17 +192,20 @@ final class SystemExtensionManager: NSObject, ObservableObject {
     func activateExtension() {
         if let failure = activationPreflightFailure() {
             hasResolvedStatus = true
+            requestState = .idle
             updateStatus(failure)
             return
         }
 
+        let activationState = activationRequestState()
         let request = OSSystemExtensionRequest.activationRequest(
             forExtensionWithIdentifier: AppConstants.extensionBundleIdentifier,
             queue: .main
         )
         request.delegate = self
         requestKinds[ObjectIdentifier(request)] = .activation
-        updateStatus("Requesting extension activation or replacement…")
+        requestState = activationState
+        updateStatus(statusMessageForActivationRequest(state: activationState))
         OSSystemExtensionManager.shared.submitRequest(request)
     }
 
@@ -171,6 +221,7 @@ final class SystemExtensionManager: NSObject, ObservableObject {
         )
         request.delegate = self
         requestKinds[ObjectIdentifier(request)] = .deactivation
+        requestState = .uninstalling
         updateStatus("Requesting extension removal…")
         OSSystemExtensionManager.shared.submitRequest(request)
     }
@@ -289,8 +340,27 @@ final class SystemExtensionManager: NSObject, ObservableObject {
         return parts.joined(separator: " ")
     }
 
+    private func activationRequestState() -> ExtensionRequestState {
+        switch installationState {
+        case .installed, .uninstalling:
+            return .reinstalling
+        case .unknown, .readyToInstall, .awaitingUserApproval, .installedDisabled:
+            return .installing
+        }
+    }
+
+    private func statusMessageForActivationRequest(state: ExtensionRequestState) -> String {
+        switch state {
+        case .reinstalling:
+            return "Requesting virtual camera reinstall…"
+        case .installing, .idle, .checking, .uninstalling:
+            return "Requesting virtual camera install…"
+        }
+    }
+
     private func updateInstalledProperties(_ snapshots: [ExtensionPropertiesSnapshot]) {
         hasResolvedStatus = true
+        requestState = .idle
 
         guard let snapshot = preferredSnapshot(from: snapshots) else {
             installationState = .readyToInstall
@@ -403,6 +473,7 @@ extension SystemExtensionManager: OSSystemExtensionRequestDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.hasResolvedStatus = true
+            self.requestState = .idle
             self.installationState = .awaitingUserApproval(version: self.embeddedExtensionVersion())
         }
         updateStatus("Extension approval required in System Settings > General > Login Items & Extensions > Camera Extensions. Camera privacy permission is separate.")
@@ -421,8 +492,10 @@ extension SystemExtensionManager: OSSystemExtensionRequestDelegate {
                 case .activation?, .deactivation?:
                     self.refreshStatus()
                 case .properties?:
+                    self.requestState = .idle
                     break
                 case nil:
+                    self.requestState = .idle
                     self.statusMessage = "Extension request completed."
                 }
             }
@@ -434,12 +507,15 @@ extension SystemExtensionManager: OSSystemExtensionRequestDelegate {
 
                 switch kind {
                 case .activation?:
+                    self.requestState = .idle
                     self.installationState = .installed(version: bundledVersion, isCurrentBuild: true)
                     self.statusMessage = "Virtual camera build \(bundledVersion) will finish installing after a reboot."
                 case .deactivation?:
+                    self.requestState = .idle
                     self.installationState = .uninstalling(version: bundledVersion)
                     self.statusMessage = "Virtual camera removal will finish after a reboot."
                 case .properties?, nil:
+                    self.requestState = .idle
                     self.installationState = .unknown
                     self.statusMessage = "System extension changes will complete after a reboot."
                 }
@@ -458,6 +534,7 @@ extension SystemExtensionManager: OSSystemExtensionRequestDelegate {
             guard let self else { return }
 
             let kind = self.requestKinds.removeValue(forKey: requestID)
+            self.requestState = .idle
             if case .properties? = kind {
                 self.hasResolvedStatus = true
                 self.statusMessage = statusLookupError

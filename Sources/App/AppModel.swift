@@ -322,6 +322,10 @@ final class AppModel: ObservableObject {
         extensionManager.activateExtension()
     }
 
+    func reinstallExtension() {
+        extensionManager.activateExtension()
+    }
+
     func uninstallExtension() {
         extensionManager.deactivateExtension()
     }
@@ -452,17 +456,6 @@ final class AppModel: ObservableObject {
         showingOnboarding = false
         persistSettings()
         refreshOnboardingPrerequisites()
-    }
-
-    func resetOnboarding() {
-        hasCompletedOnboarding = false
-        showingSettings = false
-        showingOnboarding = true
-        persistSettings()
-        refreshOnboardingPrerequisites()
-        if cameraAuthorizationStatus == .notDetermined {
-            stopPreview()
-        }
     }
 
     func openCameraPrivacySettings() {
