@@ -330,7 +330,9 @@ private extension View {
     @ViewBuilder
     func cameraDropdownFocusEffectDisabled() -> some View {
         if #available(macOS 14.0, *) {
-            self.focusEffectDisabled()
+            self
+                .focusEffectDisabled()
+                .background(CameraDropdownFocusRingDisabler())
         } else {
             self.background(CameraDropdownFocusRingDisabler())
         }
