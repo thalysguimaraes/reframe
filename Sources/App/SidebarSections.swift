@@ -22,7 +22,7 @@ struct CameraSectionView: View {
     }
 }
 
-private struct CameraDropdown: View {
+struct CameraDropdown: View {
     @Binding var selection: String?
     let cameras: [CameraDeviceDescriptor]
     let onSelection: () -> Void
@@ -34,8 +34,22 @@ private struct CameraDropdown: View {
     @FocusState private var focusedCameraID: String?
     @Environment(\.isEnabled) private var isEnabled
 
-    private let popoverWidth = Theme.sidebarWidth - (Theme.sidebarPadding * 2)
-    private let popoverMaxHeight: CGFloat = 248
+    private let popoverWidth: CGFloat
+    private let popoverMaxHeight: CGFloat
+
+    init(
+        selection: Binding<String?>,
+        cameras: [CameraDeviceDescriptor],
+        popoverWidth: CGFloat = Theme.sidebarWidth - (Theme.sidebarPadding * 2),
+        popoverMaxHeight: CGFloat = 248,
+        onSelection: @escaping () -> Void
+    ) {
+        _selection = selection
+        self.cameras = cameras
+        self.onSelection = onSelection
+        self.popoverWidth = popoverWidth
+        self.popoverMaxHeight = popoverMaxHeight
+    }
 
     private var selectedCamera: CameraDeviceDescriptor? {
         cameras.first(where: { $0.uniqueID == selection })

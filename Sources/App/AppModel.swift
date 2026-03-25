@@ -31,6 +31,9 @@ final class AppModel: ObservableObject {
     @Published var vibrance: Double
     @Published var saturation: Double
     @Published var sharpness: Double
+    @Published var showInMenuBar: Bool
+    @Published var showDockIcon: Bool
+    @Published var keepRunningOnClose: Bool
     @Published var isAdjustmentsSidebarVisible = true
     @Published var isDarkMode: Bool
     @Published var showingOnboarding = false
@@ -76,6 +79,9 @@ final class AppModel: ObservableObject {
         self.vibrance = settings.vibrance
         self.saturation = settings.saturation
         self.sharpness = settings.sharpness
+        self.showInMenuBar = settings.showInMenuBar
+        self.showDockIcon = settings.showDockIcon
+        self.keepRunningOnClose = settings.keepRunningOnClose
         self.isDarkMode = Self.systemPrefersDarkMode
         self.stats = statsStore.load() ?? .empty
         self.deadZone = settings.deadZone
@@ -94,6 +100,48 @@ final class AppModel: ObservableObject {
 
     var isPipelineBusy: Bool {
         pipelineActivity != nil
+    }
+
+    var shouldKeepRunningInBackground: Bool {
+        showInMenuBar && keepRunningOnClose
+    }
+
+    var effectiveShowsDockIcon: Bool {
+        !showInMenuBar || showDockIcon
+    }
+
+    var menuBarIconSymbolName: String {
+        if pipelineActivity != nil {
+            return "camera.badge.ellipsis"
+        }
+
+        switch previewState {
+        case .live:
+            return "camera.fill"
+        case .warmingUp:
+            return "camera.badge.ellipsis"
+        case .noSignal:
+            return "camera.slash.fill"
+        case .idle:
+            return "camera"
+        }
+    }
+
+    var menuBarIconTintColor: NSColor {
+        if pipelineActivity != nil {
+            return .systemOrange
+        }
+
+        switch previewState {
+        case .live:
+            return .systemGreen
+        case .warmingUp:
+            return .systemOrange
+        case .noSignal:
+            return .systemRed
+        case .idle:
+            return .secondaryLabelColor
+        }
     }
 
     var previewStatusIndicatorColor: Color {
@@ -159,6 +207,20 @@ final class AppModel: ObservableObject {
         return "Retry camera"
     }
 
+    var dockIconSettingSubtitle: String {
+        if showInMenuBar {
+            return "Switch between Dock + menu bar and menu bar only."
+        }
+        return "Dock icon stays visible while menu bar mode is off."
+    }
+
+    var keepRunningSettingSubtitle: String {
+        if showInMenuBar {
+            return "Keeps Reframe running after you close the main window."
+        }
+        return "Requires menu bar mode to stay available after closing the window."
+    }
+
     private static var systemPrefersDarkMode: Bool {
         NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
@@ -182,7 +244,10 @@ final class AppModel: ObservableObject {
             tint: tint,
             vibrance: vibrance,
             saturation: saturation,
-            sharpness: sharpness
+            sharpness: sharpness,
+            showInMenuBar: showInMenuBar,
+            showDockIcon: showDockIcon,
+            keepRunningOnClose: keepRunningOnClose
         )
     }
 

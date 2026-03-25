@@ -5,10 +5,9 @@ import Foundation
 final class PreviewStream: @unchecked Sendable {
     var onFrameEnqueued: (@Sendable (Double, CFAbsoluteTime) -> Void)?
 
-    private weak var displayLayer: AVSampleBufferDisplayLayer?
     private let queue = DispatchQueue(label: "dev.autoframe.preview.stream", qos: .userInteractive)
+    private var displayLayers: [ObjectIdentifier: WeakDisplayLayerBox] = [:]
     private var fpsWindow: [CFAbsoluteTime] = []
-    private var hasDeliveredFirstFrame = false
     private var lastMetricsReportTime: CFAbsoluteTime = .zero
 
     func attach(to displayLayer: AVSampleBufferDisplayLayer) {
@@ -16,10 +15,13 @@ final class PreviewStream: @unchecked Sendable {
         queue.async { [weak self] in
             let displayLayer = displayLayerBox.layer
             guard let self else { return }
-            guard self.displayLayer !== displayLayer else { return }
-            self.displayLayer = displayLayer
-            self.hasDeliveredFirstFrame = false
-            self.lastMetricsReportTime = .zero
+            let identifier = ObjectIdentifier(displayLayer)
+            if self.displayLayers[identifier]?.layer === displayLayer {
+                return
+            }
+
+            self.displayLayers[identifier] = WeakDisplayLayerBox(displayLayer)
+            self.pruneDisplayLayers()
             displayLayer.flushAndRemoveImage()
         }
     }
@@ -28,9 +30,8 @@ final class PreviewStream: @unchecked Sendable {
         let displayLayerBox = DisplayLayerBox(displayLayer)
         queue.async { [weak self] in
             let displayLayer = displayLayerBox.layer
-            if self?.displayLayer === displayLayer {
-                self?.displayLayer = nil
-            }
+            self?.displayLayers.removeValue(forKey: ObjectIdentifier(displayLayer))
+            self?.pruneDisplayLayers()
             displayLayer.flushAndRemoveImage()
         }
     }
@@ -38,9 +39,9 @@ final class PreviewStream: @unchecked Sendable {
     func reset() {
         queue.async { [weak self] in
             self?.fpsWindow.removeAll(keepingCapacity: true)
-            self?.hasDeliveredFirstFrame = false
             self?.lastMetricsReportTime = .zero
-            self?.displayLayer?.flushAndRemoveImage()
+            self?.pruneDisplayLayers()
+            self?.displayLayers.values.compactMap(\.layer).forEach { $0.flushAndRemoveImage() }
         }
     }
 
@@ -55,28 +56,35 @@ final class PreviewStream: @unchecked Sendable {
 
         let sampleBufferBox = SampleBufferBox(sampleBuffer)
         queue.async { [weak self] in
-            guard let self, let displayLayer = self.displayLayer else { return }
+            guard let self else { return }
 
-            if displayLayer.status == .failed {
-                displayLayer.flush()
+            self.pruneDisplayLayers()
+            let activeLayers = self.displayLayers.values.compactMap(\.layer)
+            for displayLayer in activeLayers {
+                if displayLayer.status == .failed {
+                    displayLayer.flush()
+                }
+
+                guard displayLayer.isReadyForMoreMediaData else {
+                    continue
+                }
+
+                displayLayer.enqueue(sampleBufferBox.sampleBuffer)
             }
-
-            guard displayLayer.isReadyForMoreMediaData else {
-                return
-            }
-
-            displayLayer.enqueue(sampleBufferBox.sampleBuffer)
 
             let now = CFAbsoluteTimeGetCurrent()
             self.update(window: &self.fpsWindow, now: now)
-            guard !self.hasDeliveredFirstFrame || now - self.lastMetricsReportTime >= 0.25 else {
+            guard self.lastMetricsReportTime == .zero || now - self.lastMetricsReportTime >= 0.25 else {
                 return
             }
 
-            self.hasDeliveredFirstFrame = true
             self.lastMetricsReportTime = now
             self.onFrameEnqueued?(self.rollingFPS(from: self.fpsWindow), now)
         }
+    }
+
+    private func pruneDisplayLayers() {
+        displayLayers = displayLayers.filter { $0.value.layer != nil }
     }
 
     private func update(window: inout [CFAbsoluteTime], now: CFAbsoluteTime) {
@@ -95,6 +103,14 @@ final class PreviewStream: @unchecked Sendable {
 
 private final class DisplayLayerBox: @unchecked Sendable {
     let layer: AVSampleBufferDisplayLayer
+
+    init(_ layer: AVSampleBufferDisplayLayer) {
+        self.layer = layer
+    }
+}
+
+private final class WeakDisplayLayerBox {
+    weak var layer: AVSampleBufferDisplayLayer?
 
     init(_ layer: AVSampleBufferDisplayLayer) {
         self.layer = layer

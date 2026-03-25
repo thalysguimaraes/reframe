@@ -49,6 +49,56 @@ struct AboutView: View {
                     Toggle("", isOn: $model.isDarkMode)
                         .toggleStyle(ControlSurfaceToggleStyle())
                         .labelsHidden()
+                        .onChange(of: model.isDarkMode) { _ in
+                            model.persistSettings()
+                        }
+                }
+
+                Divider().overlay(Theme.divider)
+
+                settingsRow(
+                    icon: "menubar.rectangle",
+                    label: "Show in menu bar",
+                    subtitle: "Keep Reframe available from the macOS menu bar."
+                ) {
+                    Toggle("", isOn: $model.showInMenuBar)
+                        .toggleStyle(ControlSurfaceToggleStyle())
+                        .labelsHidden()
+                        .onChange(of: model.showInMenuBar) { _ in
+                            model.persistSettings()
+                        }
+                }
+
+                Divider().overlay(Theme.divider)
+
+                settingsRow(
+                    icon: "square.grid.2x2",
+                    label: "Show Dock icon",
+                    subtitle: model.dockIconSettingSubtitle
+                ) {
+                    Toggle("", isOn: $model.showDockIcon)
+                        .toggleStyle(ControlSurfaceToggleStyle())
+                        .labelsHidden()
+                        .disabled(!model.showInMenuBar)
+                        .onChange(of: model.showDockIcon) { _ in
+                            model.persistSettings()
+                        }
+                }
+
+                Divider().overlay(Theme.divider)
+
+                settingsRow(
+                    icon: "rectangle.inset.filled.and.person.filled",
+                    label: "Keep running on close",
+                    subtitle: model.keepRunningSettingSubtitle
+                ) {
+                    Toggle("", isOn: $model.keepRunningOnClose)
+                        .toggleStyle(ControlSurfaceToggleStyle())
+                        .labelsHidden()
+                        .disabled(!model.showInMenuBar)
+                        .onChange(of: model.keepRunningOnClose) { _ in
+                            model.persistSettings()
+                        }
                 }
 
                 Divider().overlay(Theme.divider)
@@ -107,7 +157,7 @@ struct AboutView: View {
         }
         .fontDesign(.rounded)
         .padding(24)
-        .frame(width: 360, height: 440)
+        .frame(width: 380, height: 560)
         .background(Theme.backgroundWindow)
     }
 
