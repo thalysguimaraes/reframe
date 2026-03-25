@@ -32,6 +32,8 @@ private struct CameraPreviewSurfaceView: NSViewRepresentable {
 }
 
 private final class PreviewContainerView: NSView {
+    private static let previewBackgroundColor = CGColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+
     let displayLayer = AVSampleBufferDisplayLayer()
     weak var previewStream: PreviewStream?
 
@@ -39,11 +41,14 @@ private final class PreviewContainerView: NSView {
         super.init(frame: frameRect)
         wantsLayer = true
         let rootLayer = CALayer()
-        rootLayer.backgroundColor = CGColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+        rootLayer.backgroundColor = Self.previewBackgroundColor
+        rootLayer.cornerRadius = Theme.previewCornerRadius
+        rootLayer.cornerCurve = .continuous
+        rootLayer.masksToBounds = true
         layer = rootLayer
 
         displayLayer.videoGravity = .resizeAspect
-        displayLayer.backgroundColor = CGColor(red: 0.04, green: 0.04, blue: 0.07, alpha: 1)
+        displayLayer.backgroundColor = nil
         rootLayer.addSublayer(displayLayer)
     }
 
@@ -52,8 +57,38 @@ private final class PreviewContainerView: NSView {
         nil
     }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateLayerGeometry()
+    }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        updateLayerGeometry()
+    }
+
     override func layout() {
         super.layout()
-        displayLayer.frame = bounds
+        updateLayerGeometry()
+    }
+
+    private func updateLayerGeometry() {
+        guard let rootLayer = layer else { return }
+
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        rootLayer.contentsScale = scale
+        displayLayer.contentsScale = scale
+        displayLayer.frame = pixelAlignedFrame(for: bounds, scale: scale)
+    }
+
+    // Expand to backing-pixel boundaries so the display layer fully covers the clipped root layer.
+    private func pixelAlignedFrame(for rect: CGRect, scale: CGFloat) -> CGRect {
+        guard !rect.isNull, !rect.isEmpty else { return .zero }
+
+        let minX = floor(rect.minX * scale) / scale
+        let minY = floor(rect.minY * scale) / scale
+        let maxX = ceil(rect.maxX * scale) / scale
+        let maxY = ceil(rect.maxY * scale) / scale
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 }
