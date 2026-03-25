@@ -47,9 +47,8 @@ struct AboutView: View {
                 // Appearance
                 settingsRow(icon: "moon.circle", label: "Dark mode") {
                     Toggle("", isOn: $model.isDarkMode)
-                        .toggleStyle(.switch)
+                        .toggleStyle(ControlSurfaceToggleStyle())
                         .labelsHidden()
-                        .tint(Theme.accent)
                 }
 
                 Divider().overlay(Theme.divider)
@@ -60,14 +59,17 @@ struct AboutView: View {
                     label: "Virtual camera",
                     subtitle: model.extensionManager.statusMessage
                 ) {
-                    Button(model.extensionManager.canActivateExtension ? "Install" : "Installed") {
-                        model.installExtension()
+                    if model.extensionManager.canActivateExtension {
+                        Button(model.extensionManager.primaryActionTitle) {
+                            model.installExtension()
+                        }
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(Theme.accent)
+                    } else {
+                        installedBadge
                     }
-                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(Theme.accent)
-                    .disabled(!model.extensionManager.canActivateExtension)
                 }
             }
             .background(Theme.backgroundControl, in: RoundedRectangle(cornerRadius: 10))
@@ -104,7 +106,7 @@ struct AboutView: View {
                 if let subtitle, !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.system(size: 10, design: .rounded))
-                        .foregroundStyle(Theme.textTertiary)
+                        .foregroundStyle(Theme.textSecondary)
                         .lineLimit(1)
                 }
             }
@@ -115,5 +117,24 @@ struct AboutView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
+    }
+
+    private var installedBadge: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(Theme.accent)
+                .frame(width: 6, height: 6)
+
+            Text("Installed")
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.textPrimary)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Theme.backgroundControlSelected, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(Theme.controlBorder, lineWidth: 1)
+        )
     }
 }
