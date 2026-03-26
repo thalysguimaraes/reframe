@@ -70,6 +70,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         sender.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
+
+        // Stop pipeline if popover is also closed — no UI needs the camera.
+        if !menuBarController.isPopoverVisible {
+            model?.stopPreview()
+        }
         return false
     }
 
@@ -77,6 +82,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window = resolvedMainWindow() else { return }
 
         NSApp.setActivationPolicy(.regular)
+
+        // Restart pipeline when the window comes back.
+        model?.startPreviewIfNeeded()
 
         if window.isMiniaturized {
             window.deminiaturize(nil)
@@ -230,6 +238,10 @@ final class MenuBarController: NSObject {
         }
     }
 
+    var isPopoverVisible: Bool {
+        popover.isShown
+    }
+
     func closePopover() {
         popover.performClose(nil)
     }
@@ -261,8 +273,16 @@ final class MenuBarController: NSObject {
 
         if popover.isShown {
             closePopover()
+            // Stop pipeline if main window is also not visible.
+            let mainWindowVisible = NSApp.windows.contains(where: { $0.canBecomeMain && $0.isVisible })
+            if !mainWindowVisible {
+                model?.stopPreview()
+            }
             return
         }
+
+        // Start pipeline when opening popover.
+        model?.startPreviewIfNeeded()
 
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.becomeKey()
