@@ -63,7 +63,7 @@ func set(arguments: [String]) {
     if let smoothing = optionValue(named: "--smoothing", in: arguments).flatMap(Double.init) {
         settings.smoothing = min(max(smoothing, 0.0), 0.99)
     }
-    if let zoom = optionValue(named: "--zoom", in: arguments).flatMap(Double.init) {
+    if let zoom = optionValue(namedAnyOf: ["--zoom", "--zoom-strength"], in: arguments).flatMap(Double.init) {
         settings.zoomStrength = min(max(zoom, 0.0), 1.0)
     }
     if let deadzone = optionValue(named: "--deadzone", in: arguments).flatMap(Double.init) {
@@ -129,10 +129,17 @@ func cameraID(matching nameOrID: String) -> String? {
 }
 
 func optionValue(named name: String, in arguments: [String]) -> String? {
-    guard let index = arguments.firstIndex(of: name), arguments.indices.contains(index + 1) else {
-        return nil
+    optionValue(namedAnyOf: [name], in: arguments)
+}
+
+func optionValue(namedAnyOf names: [String], in arguments: [String]) -> String? {
+    for name in names {
+        guard let index = arguments.firstIndex(of: name), arguments.indices.contains(index + 1) else {
+            continue
+        }
+        return arguments[index + 1]
     }
-    return arguments[index + 1]
+    return nil
 }
 
 func save(_ settings: AutoFrameSettings) {
@@ -147,11 +154,11 @@ func save(_ settings: AutoFrameSettings) {
 func printUsage() {
     print("""
     Usage:
-      autoframe-cam list-cameras
-      autoframe-cam start --camera <name-or-id> --preset <tight|medium|wide> --output <720p|1080p>
-      autoframe-cam set --smoothing <value> --zoom <0...1> [--preset <tight|medium|wide>] [--tracking on|off]
-      autoframe-cam toggle-tracking [on|off]
-      autoframe-cam print-stats
-      autoframe-cam stop
+      \(AppConstants.cliExecutableName) list-cameras
+      \(AppConstants.cliExecutableName) start --camera <name-or-id> --preset <tight|medium|wide> --output <720p|1080p>
+      \(AppConstants.cliExecutableName) set --smoothing <value> --zoom-strength <0...1> [--preset <tight|medium|wide>] [--tracking on|off]
+      \(AppConstants.cliExecutableName) toggle-tracking [on|off]
+      \(AppConstants.cliExecutableName) print-stats
+      \(AppConstants.cliExecutableName) stop
     """)
 }

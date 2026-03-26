@@ -5,7 +5,7 @@ import Foundation
 public enum CameraCatalog {
     public static func videoDevices() -> [CameraDeviceDescriptor] {
         discoverySession.devices
-            .filter { !isVirtualAutoFrameCamera($0) }
+            .filter { !isVirtualReframeCamera($0) }
             .map(makeDescriptor)
             .sorted { $0.localizedName.localizedCaseInsensitiveCompare($1.localizedName) == .orderedAscending }
     }
@@ -22,7 +22,7 @@ public enum CameraCatalog {
         let preferredID = defaultPhysicalCameraID(preferredID: uniqueID)
         guard let preferredID else { return nil }
         return discoverySession.devices
-            .first(where: { $0.uniqueID == preferredID && !isVirtualAutoFrameCamera($0) })
+            .first(where: { $0.uniqueID == preferredID && !isVirtualReframeCamera($0) })
     }
 
     private static func makeDescriptor(for device: AVCaptureDevice) -> CameraDeviceDescriptor {
@@ -48,7 +48,7 @@ public enum CameraCatalog {
         )
     }
 
-    private static func isVirtualAutoFrameCamera(_ device: AVCaptureDevice) -> Bool {
+    private static func isVirtualReframeCamera(_ device: AVCaptureDevice) -> Bool {
         let normalizedName = normalized(device.localizedName)
         let normalizedManufacturer = normalized(device.manufacturer)
         let normalizedModel = normalized(device.modelID)

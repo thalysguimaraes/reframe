@@ -76,7 +76,7 @@ struct ContentView: View {
                 Text("Reframe")
                     .font(.system(size: 13, weight: .medium, design: .rounded))
                     .foregroundStyle(Theme.textHeading)
-                Text("0.1.0")
+                Text(AppConstants.marketingVersion)
                     .font(.system(size: 10, design: .rounded))
                     .foregroundStyle(Theme.textTertiary)
             }

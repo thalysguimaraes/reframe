@@ -7,5 +7,4 @@ signed-build/
 *.swp
 *.log
 *.xcodeproj/
-Config/*-Info.plist
 PRD.md

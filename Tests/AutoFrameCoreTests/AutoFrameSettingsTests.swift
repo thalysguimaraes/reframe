@@ -39,4 +39,33 @@ final class AutoFrameSettingsTests: XCTestCase {
         XCTAssertFalse(decoded.showDockIcon)
         XCTAssertTrue(decoded.keepRunningOnClose)
     }
+
+    func testDarkModePreferenceDefaultsToSystemWhenMissingFromOlderPayloads() throws {
+        let legacyJSON = """
+        {
+          "cameraID": "camera-1",
+          "framingPreset": "medium",
+          "hasCompletedOnboarding": true,
+          "outputResolution": "1080p",
+          "smoothing": 0.82,
+          "trackingEnabled": true,
+          "zoomStrength": 0.5
+        }
+        """
+
+        let settings = try JSONDecoder().decode(AutoFrameSettings.self, from: Data(legacyJSON.utf8))
+        XCTAssertNil(settings.preferredDarkMode)
+    }
+
+    func testDarkModePreferenceRoundTripsThroughCodable() throws {
+        let settings = AutoFrameSettings(
+            hasCompletedOnboarding: true,
+            cameraID: "camera-2",
+            preferredDarkMode: true
+        )
+
+        let data = try JSONEncoder().encode(settings)
+        let decoded = try JSONDecoder().decode(AutoFrameSettings.self, from: data)
+        XCTAssertEqual(decoded.preferredDarkMode, true)
+    }
 }

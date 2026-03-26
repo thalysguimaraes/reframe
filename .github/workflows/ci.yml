@@ -13,6 +13,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PROJECT_PATH: Reframe.xcodeproj
+  APP_SCHEME: Reframe
+  CLI_SCHEME: Reframe CLI
+
 jobs:
   build-and-test:
     name: Build & Test
@@ -29,8 +34,8 @@ jobs:
       - name: Build App
         run: |
           xcodebuild \
-            -project AutoFrameCam.xcodeproj \
-            -scheme "Reframe" \
+            -project "$PROJECT_PATH" \
+            -scheme "$APP_SCHEME" \
             -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             build
@@ -38,8 +43,8 @@ jobs:
       - name: Test
         run: |
           xcodebuild \
-            -project AutoFrameCam.xcodeproj \
-            -scheme "Reframe" \
+            -project "$PROJECT_PATH" \
+            -scheme "$APP_SCHEME" \
             -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             test
@@ -47,8 +52,8 @@ jobs:
       - name: Build CLI
         run: |
           xcodebuild \
-            -project AutoFrameCam.xcodeproj \
-            -scheme autoframe-cam \
+            -project "$PROJECT_PATH" \
+            -scheme "$CLI_SCHEME" \
             -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             build

@@ -124,22 +124,24 @@ brew install xcodegen
 git clone https://github.com/thalysguimaraes/reframe.git
 cd reframe
 xcodegen generate
-open AutoFrameCam.xcodeproj
+open Reframe.xcodeproj
 ```
 
 Before trying to install the virtual camera, create the App Group `group.dev.autoframe.cam` in Apple Developer and attach it to both `dev.autoframe.AutoFrameCam` and `dev.autoframe.AutoFrameCam.CameraExtension`. The generated provisioning profiles must include that exact App Group value, and the camera extension's `CMIOExtensionMachServiceName` must match it exactly for Core Media I/O validation to pass.
+
+The product is branded as Reframe, but the Apple Developer bundle IDs remain on the legacy `AutoFrameCam` identifiers until the signing assets and provisioning profiles are rotated.
 
 ### Terminal build
 
 ```bash
 xcodegen generate
-xcodebuild -scheme "Reframe" -configuration Release build
+xcodebuild -project Reframe.xcodeproj -scheme "Reframe" -configuration Release build
 ```
 
 ### Run tests
 
 ```bash
-xcodebuild -scheme "Reframe" test
+xcodebuild -project Reframe.xcodeproj -scheme "Reframe" test
 ```
 
 ## Project structure

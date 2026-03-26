@@ -12,7 +12,7 @@ final class VirtualBackgroundSettingsTests: XCTestCase {
             .deletingLastPathComponent() // AutoFrameCoreTests
             .deletingLastPathComponent() // Tests
             .deletingLastPathComponent() // project root
-            .appendingPathComponent("Config/AutoFrameCam.entitlements")
+            .appendingPathComponent("Config/Reframe.entitlements")
 
         let data = try Data(contentsOf: entitlementsPath)
         let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as! [String: Any]

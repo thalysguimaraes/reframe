@@ -1,4 +1,4 @@
-name: AutoFrameCam
+name: Reframe
 options:
   bundleIdPrefix: dev.autoframe
   createIntermediateGroups: true
@@ -8,6 +8,7 @@ settings:
   base:
     CURRENT_PROJECT_VERSION: 6
     MARKETING_VERSION: 0.1.0
+    VERSIONING_SYSTEM: apple-generic
     SWIFT_VERSION: 6.0
     SWIFT_STRICT_CONCURRENCY: minimal
     MACOSX_DEPLOYMENT_TARGET: 13.0
@@ -36,11 +37,11 @@ targets:
       - sdk: CoreGraphics.framework
       - sdk: IOSurface.framework
 
-  AutoFrameCameraExtension:
+  ReframeCameraExtension:
     type: system-extension
     platform: macOS
     deploymentTarget: "13.0"
-    productName: AutoFrameCameraExtension
+    productName: ReframeCameraExtension
     sources:
       - path: Sources/CameraExtension
     attributes:
@@ -48,20 +49,22 @@ targets:
         com.apple.developer.app-groups:
           enabled: 1
     info:
-      path: Config/AutoFrameCameraExtension-Info.plist
+      path: Config/ReframeCameraExtension-Info.plist
       properties:
         CFBundlePackageType: SYSX
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSSystemExtensionUsageDescription: Reframe installs a virtual camera extension so meeting apps can use the reframed feed.
-        AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
+        ReframeAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
         CMIOExtension:
           CMIOExtensionMachServiceName: $(AUTOFRAME_APP_GROUP_ID)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCam.CameraExtension
-        PRODUCT_NAME: AutoFrameCameraExtension
+        PRODUCT_NAME: ReframeCameraExtension
         EXECUTABLE_NAME: $(PRODUCT_BUNDLE_IDENTIFIER)
         WRAPPER_NAME: $(PRODUCT_BUNDLE_IDENTIFIER).systemextension
-        CODE_SIGN_ENTITLEMENTS: Config/AutoFrameCameraExtension.entitlements
+        CODE_SIGN_ENTITLEMENTS: Config/ReframeCameraExtension.entitlements
         ENABLE_APP_SANDBOX: YES
         GENERATE_INFOPLIST_FILE: YES
     dependencies:
@@ -74,7 +77,7 @@ targets:
       - sdk: IOSurface.framework
       - sdk: IOKit.framework
 
-  AutoFrameCam:
+  ReframeApp:
     type: application
     platform: macOS
     deploymentTarget: "13.0"
@@ -93,9 +96,11 @@ targets:
         com.apple.developer.system-extension.install:
           enabled: 1
     info:
-      path: Config/AutoFrameCam-Info.plist
+      path: Config/Reframe-Info.plist
       properties:
-        AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ReframeAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
         NSCameraUsageDescription: Reframe needs camera access to preview and configure your selected webcam.
         NSSystemExtensionUsageDescription: Reframe installs a virtual camera extension so meeting apps can use the reframed feed.
         CFBundleIconName: AppIcon
@@ -104,12 +109,12 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.AutoFrameCam
         PRODUCT_NAME: Reframe
-        CODE_SIGN_ENTITLEMENTS: Config/AutoFrameCam.entitlements
+        CODE_SIGN_ENTITLEMENTS: Config/Reframe.entitlements
         ENABLE_APP_SANDBOX: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - target: AutoFrameCore
-      - target: AutoFrameCameraExtension
+      - target: ReframeCameraExtension
         embed: true
       - sdk: SwiftUI.framework
       - sdk: AppKit.framework
@@ -117,17 +122,17 @@ targets:
       - sdk: IOSurface.framework
       - sdk: SystemExtensions.framework
 
-  autoframe-cam:
+  ReframeCLI:
     type: tool
     platform: macOS
     deploymentTarget: "13.0"
-    productName: autoframe-cam
+    productName: reframe
     sources:
       - path: Sources/CLI
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.autoframe-cam
-        PRODUCT_NAME: autoframe-cam
+        PRODUCT_BUNDLE_IDENTIFIER: dev.autoframe.ReframeCLI
+        PRODUCT_NAME: reframe
     dependencies:
       - target: AutoFrameCore
       - sdk: AVFoundation.framework
@@ -148,18 +153,18 @@ schemes:
   Reframe:
     build:
       targets:
-        AutoFrameCam: all
-        AutoFrameCameraExtension: all
+        ReframeApp: all
+        ReframeCameraExtension: all
         AutoFrameCore: all
     test:
       targets:
         - AutoFrameCoreTests
     run:
       config: Debug
-  autoframe-cam:
+  "Reframe CLI":
     build:
       targets:
-        autoframe-cam: all
+        ReframeCLI: all
         AutoFrameCore: all
     test:
       targets:

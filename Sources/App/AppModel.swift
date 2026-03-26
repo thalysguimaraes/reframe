@@ -56,6 +56,7 @@ final class AppModel: ObservableObject {
     private let liveSettingsSnapshot: LiveSettingsSnapshot
     private let deadZone: Double
     private let performancePolicy: PerformancePolicy
+    private var preferredDarkMode: Bool?
     private var pipeline: AutoFramePipeline?
     private var pipelineOperationTask: Task<Void, Never>?
     private var pipelineOperationID = 0
@@ -92,7 +93,8 @@ final class AppModel: ObservableObject {
         self.showInMenuBar = settings.showInMenuBar
         self.showDockIcon = settings.showDockIcon
         self.keepRunningOnClose = settings.keepRunningOnClose
-        self.isDarkMode = Self.systemPrefersDarkMode
+        self.preferredDarkMode = settings.preferredDarkMode
+        self.isDarkMode = settings.preferredDarkMode ?? Self.systemPrefersDarkMode
         self.stats = statsStore.load() ?? .empty
         self.deadZone = settings.deadZone
         self.performancePolicy = settings.performancePolicy
@@ -243,8 +245,15 @@ final class AppModel: ObservableObject {
             sharpness: sharpness,
             showInMenuBar: showInMenuBar,
             showDockIcon: showDockIcon,
-            keepRunningOnClose: keepRunningOnClose
+            keepRunningOnClose: keepRunningOnClose,
+            preferredDarkMode: preferredDarkMode
         )
+    }
+
+    func setDarkMode(_ enabled: Bool) {
+        preferredDarkMode = enabled
+        isDarkMode = enabled
+        persistSettings()
     }
 
     func resetAdjustments() {

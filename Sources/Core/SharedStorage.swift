@@ -7,12 +7,11 @@ public enum SharedStorage {
             return appGroupURL
         }
 
-        let fallback = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library", isDirectory: true)
-            .appendingPathComponent("Application Support", isDirectory: true)
-            .appendingPathComponent(AppConstants.supportDirectoryName, isDirectory: true)
-        ensureDirectory(fallback)
-        return fallback
+        let fallback = applicationSupportDirectory(named: AppConstants.supportDirectoryName)
+        let legacyFallback = applicationSupportDirectory(named: AppConstants.legacySupportDirectoryName)
+        let resolvedFallback = resolvedFallbackDirectory(preferred: fallback, legacy: legacyFallback)
+        ensureDirectory(resolvedFallback)
+        return resolvedFallback
     }
 
     public static let settingsURL = containerDirectory().appendingPathComponent("settings.json")
@@ -21,6 +20,27 @@ public enum SharedStorage {
 
     private static func ensureDirectory(_ url: URL) {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    }
+
+    private static func applicationSupportDirectory(named name: String) -> URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library", isDirectory: true)
+            .appendingPathComponent("Application Support", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+    }
+
+    private static func resolvedFallbackDirectory(preferred preferredURL: URL, legacy legacyURL: URL) -> URL {
+        let fileManager = FileManager.default
+        guard !fileManager.fileExists(atPath: preferredURL.path), fileManager.fileExists(atPath: legacyURL.path) else {
+            return preferredURL
+        }
+
+        do {
+            try fileManager.moveItem(at: legacyURL, to: preferredURL)
+            return preferredURL
+        } catch {
+            return legacyURL
+        }
     }
 }
 

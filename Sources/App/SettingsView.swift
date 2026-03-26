@@ -1,4 +1,5 @@
 import SwiftUI
+import AutoFrameCore
 
 struct AboutView: View {
     @ObservedObject var model: AppModel
@@ -21,7 +22,7 @@ struct AboutView: View {
                         .font(.system(size: 18, weight: .semibold, design: .rounded))
                         .foregroundStyle(Theme.textHeading)
 
-                    Text("Version 0.1.0")
+                    Text("Version \(AppConstants.versionDisplayString)")
                         .font(.system(size: 12, design: .rounded))
                         .foregroundStyle(Theme.textTertiary)
                 }
@@ -35,12 +36,15 @@ struct AboutView: View {
             VStack(spacing: 0) {
                 // Appearance
                 settingsRow(icon: "moon.circle", label: "Dark mode") {
-                    Toggle("", isOn: $model.isDarkMode)
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { model.isDarkMode },
+                            set: { model.setDarkMode($0) }
+                        )
+                    )
                         .toggleStyle(ControlSurfaceToggleStyle())
                         .labelsHidden()
-                        .onChange(of: model.isDarkMode) { _ in
-                            model.persistSettings()
-                        }
                 }
 
                 Rectangle()

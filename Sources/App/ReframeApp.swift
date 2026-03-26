@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct AutoFrameCamApp: App {
+struct ReframeApp: App {
     @NSApplicationDelegateAdaptor(AppController.self) private var appController
     @StateObject private var model = AppModel()
 

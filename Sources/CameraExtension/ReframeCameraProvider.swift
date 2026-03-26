@@ -6,15 +6,15 @@ import Foundation
 import IOKit.audio
 import os.log
 
-private let logger = Logger(subsystem: "dev.autoframe.camera-extension", category: "provider")
+private let logger = Logger(subsystem: "dev.autoframe.reframe.camera-extension", category: "provider")
 
-final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
+final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private(set) var device: CMIOExtensionDevice!
-    private var streamSource: AutoFrameCameraStreamSource!
+    private var streamSource: ReframeCameraStreamSource!
     private let frameStore = SharedVideoFrameStore.shared
     private let statsStore = SharedStatsStore.shared
-    private let relayQueue = DispatchQueue(label: "dev.autoframe.camera-extension.relay", qos: .userInitiated)
-    private let stateQueue = DispatchQueue(label: "dev.autoframe.camera-extension.state")
+    private let relayQueue = DispatchQueue(label: "dev.autoframe.reframe.camera-extension.relay", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "dev.autoframe.reframe.camera-extension.state")
     private let reframer = PixelBufferReframer()
 
     private var activeStreamCount = 0
@@ -35,7 +35,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             source: self
         )
 
-        streamSource = AutoFrameCameraStreamSource(
+        streamSource = ReframeCameraStreamSource(
             localizedName: "\(AppConstants.virtualCameraName).Video",
             streamID: AppConstants.virtualStreamUUID,
             device: device
@@ -277,7 +277,7 @@ final class AutoFrameCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     }
 }
 
-final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
+final class ReframeCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     private(set) var stream: CMIOExtensionStream!
 
     let device: CMIOExtensionDevice
@@ -351,7 +351,7 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     func setStreamProperties(_ streamProperties: CMIOExtensionStreamProperties) throws {
         if let activeFormatIndex = streamProperties.activeFormatIndex {
             self.activeFormatIndex = activeFormatIndex
-            (device.source as? AutoFrameCameraDeviceSource)?.updateStreamingFormat(currentFormat)
+            (device.source as? ReframeCameraDeviceSource)?.updateStreamingFormat(currentFormat)
         }
     }
 
@@ -360,14 +360,14 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     func startStream() throws {
-        guard let deviceSource = device.source as? AutoFrameCameraDeviceSource else {
+        guard let deviceSource = device.source as? ReframeCameraDeviceSource else {
             fatalError("Unexpected CMIO device source.")
         }
         deviceSource.startStreaming(format: currentFormat)
     }
 
     func stopStream() throws {
-        guard let deviceSource = device.source as? AutoFrameCameraDeviceSource else {
+        guard let deviceSource = device.source as? ReframeCameraDeviceSource else {
             fatalError("Unexpected CMIO device source.")
         }
         deviceSource.stopStreaming()
@@ -381,9 +381,9 @@ final class AutoFrameCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     }
 }
 
-final class AutoFrameCameraProviderSource: NSObject, CMIOExtensionProviderSource {
+final class ReframeCameraProviderSource: NSObject, CMIOExtensionProviderSource {
     private(set) var provider: CMIOExtensionProvider!
-    private let deviceSource = AutoFrameCameraDeviceSource()
+    private let deviceSource = ReframeCameraDeviceSource()
 
     init(clientQueue: DispatchQueue?) {
         super.init()

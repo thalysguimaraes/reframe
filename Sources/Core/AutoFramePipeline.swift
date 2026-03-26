@@ -3,6 +3,10 @@ import CoreGraphics
 @preconcurrency import CoreMedia
 import Foundation
 
+private struct SendableSampleBuffer: @unchecked Sendable {
+    let value: CMSampleBuffer
+}
+
 public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate, @unchecked Sendable {
     public var onProcessedFrame: ((ProcessedFrame) -> Void)?
 
@@ -378,9 +382,11 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
 
         guard let nextSampleBuffer else { return }
 
-        processingQueue.async { [weak self] in
+        let sendableSampleBuffer = SendableSampleBuffer(value: nextSampleBuffer)
+
+        processingQueue.async { [weak self, sendableSampleBuffer] in
             autoreleasepool {
-                self?.process(sampleBuffer: nextSampleBuffer)
+                self?.process(sampleBuffer: sendableSampleBuffer.value)
             }
         }
     }
@@ -520,9 +526,11 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
 
         guard let nextSampleBuffer else { return }
 
-        processingQueue.async { [weak self] in
+        let sendableSampleBuffer = SendableSampleBuffer(value: nextSampleBuffer)
+
+        processingQueue.async { [weak self, sendableSampleBuffer] in
             autoreleasepool {
-                self?.process(sampleBuffer: nextSampleBuffer)
+                self?.process(sampleBuffer: sendableSampleBuffer.value)
             }
         }
     }

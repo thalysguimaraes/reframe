@@ -213,6 +213,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var showInMenuBar: Bool
     public var showDockIcon: Bool
     public var keepRunningOnClose: Bool
+    public var preferredDarkMode: Bool?
 
     public init(
         hasCompletedOnboarding: Bool = false,
@@ -242,7 +243,8 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         sharpness: Double = 0.0,
         showInMenuBar: Bool = true,
         showDockIcon: Bool = true,
-        keepRunningOnClose: Bool = true
+        keepRunningOnClose: Bool = true,
+        preferredDarkMode: Bool? = nil
     ) {
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.cameraID = cameraID
@@ -272,6 +274,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         self.showInMenuBar = showInMenuBar
         self.showDockIcon = showDockIcon
         self.keepRunningOnClose = keepRunningOnClose
+        self.preferredDarkMode = preferredDarkMode
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -282,6 +285,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         case performancePolicy
         case exposure, contrast, temperature, tint, vibrance, saturation, sharpness
         case showInMenuBar, showDockIcon, keepRunningOnClose
+        case preferredDarkMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -315,6 +319,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         showInMenuBar = try container.decodeIfPresent(Bool.self, forKey: .showInMenuBar) ?? true
         showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? true
         keepRunningOnClose = try container.decodeIfPresent(Bool.self, forKey: .keepRunningOnClose) ?? true
+        preferredDarkMode = try container.decodeIfPresent(Bool.self, forKey: .preferredDarkMode)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -347,6 +352,7 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         try container.encode(showInMenuBar, forKey: .showInMenuBar)
         try container.encode(showDockIcon, forKey: .showDockIcon)
         try container.encode(keepRunningOnClose, forKey: .keepRunningOnClose)
+        try container.encodeIfPresent(preferredDarkMode, forKey: .preferredDarkMode)
     }
 
     public static let `default` = AutoFrameSettings()

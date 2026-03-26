@@ -3,7 +3,9 @@
 # Run after building: ./Scripts/validate-sysext.sh [path-to-app]
 set -euo pipefail
 
-APP="${1:-$(find ~/Library/Developer/Xcode/DerivedData/AutoFrameCam-*/Build/Products/Debug -name "AutoFrame Cam.app" -maxdepth 1 2>/dev/null | head -1)}"
+APP="${1:-$(find ~/Library/Developer/Xcode/DerivedData -path "*/Build/Products/*/Reframe.app" -type d 2>/dev/null | head -1)}"
+EXPECTED_TEAM_ID="${EXPECTED_TEAM_ID:-B27B4ED4CL}"
+EXPECTED_EXTENSION_BUNDLE_ID="${EXPECTED_EXTENSION_BUNDLE_ID:-dev.autoframe.AutoFrameCam.CameraExtension}"
 if [[ -z "$APP" || ! -d "$APP" ]]; then
     echo "FAIL: App bundle not found. Build first or pass path as argument."
     exit 1
@@ -50,10 +52,14 @@ check_contains() {
 echo "=== Validating: $APP ==="
 echo ""
 
+APP_PLIST_PATH="$APP/Contents/Info.plist"
+APP_EXECUTABLE=$(defaults read "${APP_PLIST_PATH%/Info.plist}/Info" CFBundleExecutable 2>/dev/null || echo "")
+
 # --- App bundle structure ---
 echo "[App Bundle Structure]"
 check "App bundle exists" test -d "$APP"
-check "App executable exists" test -f "$APP/Contents/MacOS/AutoFrame Cam"
+check "App executable exists" test -n "$APP_EXECUTABLE"
+check "App executable exists on disk" test -f "$APP/Contents/MacOS/$APP_EXECUTABLE"
 check "App Info.plist exists" test -f "$APP/Contents/Info.plist"
 check "SystemExtensions dir exists" test -d "$APP/Contents/Library/SystemExtensions"
 check "Extension bundle exists" test -d "$SYSEXT"
@@ -70,7 +76,7 @@ PKG_TYPE=$(echo "$EXT_PLIST" | python3 -c "import sys,json; print(json.load(sys.
 check_eq "CFBundlePackageType is SYSX" "$PKG_TYPE" "SYSX"
 
 BUNDLE_ID=$(echo "$EXT_PLIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('CFBundleIdentifier','MISSING'))" 2>/dev/null)
-check_eq "CFBundleIdentifier" "$BUNDLE_ID" "dev.autoframe.AutoFrameCam.CameraExtension"
+check_eq "CFBundleIdentifier" "$BUNDLE_ID" "$EXPECTED_EXTENSION_BUNDLE_ID"
 
 MACH_SVC=$(echo "$EXT_PLIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('CMIOExtension',{}).get('CMIOExtensionMachServiceName','MISSING'))" 2>/dev/null)
 
@@ -89,8 +95,8 @@ check_eq "App CFBundlePackageType is APPL" "$APP_PKG" "APPL"
 SYSEXT_DESC=$(echo "$APP_PLIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('NSSystemExtensionUsageDescription','MISSING'))" 2>/dev/null)
 check "App has NSSystemExtensionUsageDescription" test "$SYSEXT_DESC" != "MISSING"
 
-EXPECTED_APP_GROUP=$(echo "$APP_PLIST" | python3 -c "import sys,json; print(json.load(sys.stdin).get('AutoFrameAppGroupID','group.dev.autoframe.cam'))" 2>/dev/null)
-check "App config declares AutoFrameAppGroupID" test "$EXPECTED_APP_GROUP" != ""
+EXPECTED_APP_GROUP=$(echo "$APP_PLIST" | python3 -c "import sys,json; payload=json.load(sys.stdin); print(payload.get('ReframeAppGroupID', payload.get('AutoFrameAppGroupID','group.dev.autoframe.cam')))" 2>/dev/null)
+check "App config declares ReframeAppGroupID" test "$EXPECTED_APP_GROUP" != ""
 check_eq "CMIOExtensionMachServiceName matches shared app group" "$MACH_SVC" "$EXPECTED_APP_GROUP"
 echo ""
 
@@ -99,10 +105,10 @@ echo "[Code Signing]"
 check "App signature valid (deep strict)" codesign --verify --deep --strict "$APP"
 
 APP_SIGN_INFO=$(codesign -dvvv "$APP" 2>&1)
-check_contains "App and extension same team" "$APP_SIGN_INFO" "TeamIdentifier=B27B4ED4CL"
+check_contains "App and extension same team" "$APP_SIGN_INFO" "TeamIdentifier=$EXPECTED_TEAM_ID"
 
 EXT_SIGN_INFO=$(codesign -dvvv "$SYSEXT" 2>&1)
-check_contains "Extension signed by same team" "$EXT_SIGN_INFO" "TeamIdentifier=B27B4ED4CL"
+check_contains "Extension signed by same team" "$EXT_SIGN_INFO" "TeamIdentifier=$EXPECTED_TEAM_ID"
 echo ""
 
 # --- Entitlements ---

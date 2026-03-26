@@ -8,6 +8,13 @@ on:
 permissions:
   contents: write
 
+env:
+  PROJECT_PATH: Reframe.xcodeproj
+  APP_SCHEME: Reframe
+  CLI_SCHEME: Reframe CLI
+  APP_NAME: Reframe
+  CLI_NAME: reframe
+
 jobs:
   build-release:
     name: Build Release
@@ -24,44 +31,203 @@ jobs:
       - name: Run tests
         run: |
           xcodebuild \
-            -project AutoFrameCam.xcodeproj \
-            -scheme "Reframe" \
+            -project "$PROJECT_PATH" \
+            -scheme "$APP_SCHEME" \
             -destination "platform=macOS" \
+            -derivedDataPath build/test \
             CODE_SIGNING_ALLOWED=NO \
             test
 
-      - name: Build Release
+      - name: Import signing assets
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_APP_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_APP_PROVISION_PROFILE_BASE64 }}
+          MACOS_BUILD_CERTIFICATE_BASE64: ${{ secrets.MACOS_BUILD_CERTIFICATE_BASE64 }}
+          MACOS_BUILD_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_BUILD_CERTIFICATE_PASSWORD }}
+          MACOS_EXTENSION_PROVISION_PROFILE_BASE64: ${{ secrets.MACOS_EXTENSION_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            APPLE_APP_SPECIFIC_PASSWORD
+            APPLE_ID
+            APPLE_TEAM_ID
+            MACOS_APP_PROVISION_PROFILE_BASE64
+            MACOS_BUILD_CERTIFICATE_BASE64
+            MACOS_BUILD_CERTIFICATE_PASSWORD
+            MACOS_EXTENSION_PROVISION_PROFILE_BASE64
+          )
+
+          for var_name in "${required_vars[@]}"; do
+            if [[ -z "${!var_name:-}" ]]; then
+              echo "Missing required release secret: ${var_name}" >&2
+              exit 1
+            fi
+          done
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/reframe-release.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="$RUNNER_TEMP/reframe-release.p12"
+          APP_PROFILE_PATH="$RUNNER_TEMP/reframe-app.provisionprofile"
+          EXT_PROFILE_PATH="$RUNNER_TEMP/reframe-extension.provisionprofile"
+          APP_PROFILE_PLIST="$RUNNER_TEMP/reframe-app-profile.plist"
+          EXT_PROFILE_PLIST="$RUNNER_TEMP/reframe-extension-profile.plist"
+          PROFILE_INSTALL_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+
+          printf '%s' "$MACOS_BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          printf '%s' "$MACOS_APP_PROVISION_PROFILE_BASE64" | base64 --decode > "$APP_PROFILE_PATH"
+          printf '%s' "$MACOS_EXTENSION_PROVISION_PROFILE_BASE64" | base64 --decode > "$EXT_PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" \
+            -P "$MACOS_BUILD_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          mkdir -p "$PROFILE_INSTALL_DIR"
+          security cms -D -i "$APP_PROFILE_PATH" > "$APP_PROFILE_PLIST"
+          security cms -D -i "$EXT_PROFILE_PATH" > "$EXT_PROFILE_PLIST"
+
+          APP_PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$APP_PROFILE_PLIST")
+          APP_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$APP_PROFILE_PLIST")
+          EXT_PROFILE_UUID=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$EXT_PROFILE_PLIST")
+          EXT_PROFILE_NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$EXT_PROFILE_PLIST")
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F '"' '/Developer ID Application/ {print $2; exit}')
+
+          if [[ -z "$SIGNING_IDENTITY" ]]; then
+            echo "Developer ID Application identity not found in temporary keychain." >&2
+            exit 1
+          fi
+
+          cp "$APP_PROFILE_PATH" "$PROFILE_INSTALL_DIR/$APP_PROFILE_UUID.provisionprofile"
+          cp "$EXT_PROFILE_PATH" "$PROFILE_INSTALL_DIR/$EXT_PROFILE_UUID.provisionprofile"
+
+          {
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
+            echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD"
+            echo "APP_PROFILE_NAME=$APP_PROFILE_NAME"
+            echo "EXT_PROFILE_NAME=$EXT_PROFILE_NAME"
+            echo "SIGNING_IDENTITY=$SIGNING_IDENTITY"
+          } >> "$GITHUB_ENV"
+
+      - name: Archive signed app
         run: |
           xcodebuild \
-            -project AutoFrameCam.xcodeproj \
-            -scheme "Reframe" \
+            -project "$PROJECT_PATH" \
+            -scheme "$APP_SCHEME" \
             -configuration Release \
-            -destination "platform=macOS" \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+            -archivePath "build/$APP_NAME.xcarchive" \
+            -destination "generic/platform=macOS" \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH" \
+            archive
 
-      - name: Package app
+      - name: Export Developer ID app
         run: |
-          cd "build/Build/Products/Release"
-          ditto -c -k --keepParent "Reframe.app" Reframe.zip
+          cat > build/export-options.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>destination</key>
+            <string>export</string>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>dev.autoframe.AutoFrameCam</key>
+              <string>${APP_PROFILE_NAME}</string>
+              <key>dev.autoframe.AutoFrameCam.CameraExtension</key>
+              <string>${EXT_PROFILE_NAME}</string>
+            </dict>
+            <key>signingCertificate</key>
+            <string>Developer ID Application</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>teamID</key>
+            <string>${APPLE_TEAM_ID}</string>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "build/$APP_NAME.xcarchive" \
+            -exportPath build/export \
+            -exportOptionsPlist build/export-options.plist
+
+      - name: Validate exported app bundle
+        env:
+          EXPECTED_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          codesign --verify --deep --strict --verbose=2 "build/export/$APP_NAME.app"
+          ./Scripts/validate-sysext.sh "build/export/$APP_NAME.app"
+
+      - name: Notarize app
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          ditto -c -k --keepParent "build/export/$APP_NAME.app" "build/$APP_NAME-notary.zip"
+          xcrun notarytool submit "build/$APP_NAME-notary.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "build/export/$APP_NAME.app"
+          xcrun stapler validate "build/export/$APP_NAME.app"
+          spctl --assess --type execute --verbose=4 "build/export/$APP_NAME.app"
+          ditto -c -k --keepParent "build/export/$APP_NAME.app" "build/$APP_NAME.zip"
 
       - name: Build CLI
         run: |
           xcodebuild \
-            -project AutoFrameCam.xcodeproj \
-            -scheme autoframe-cam \
+            -project "$PROJECT_PATH" \
+            -scheme "$CLI_SCHEME" \
             -configuration Release \
             -destination "platform=macOS" \
             -derivedDataPath build-cli \
-            CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Package CLI
+      - name: Sign and notarize CLI
+        env:
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          mkdir -p staging
-          cp "build-cli/Build/Products/Release/autoframe-cam" staging/reframe
-          cd staging && tar czf ../reframe-cli.tar.gz reframe
+          codesign \
+            --force \
+            --keychain "$KEYCHAIN_PATH" \
+            --options runtime \
+            --sign "$SIGNING_IDENTITY" \
+            --timestamp \
+            "build-cli/Build/Products/Release/$CLI_NAME"
+          codesign --verify --strict --verbose=2 "build-cli/Build/Products/Release/$CLI_NAME"
+          ditto -c -k --keepParent "build-cli/Build/Products/Release/$CLI_NAME" "build/reframe-cli.zip"
+          xcrun notarytool submit "build/reframe-cli.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
 
       - name: Create GitHub Release
         env:
@@ -69,12 +235,12 @@ jobs:
         run: |
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" \
-              build/Build/Products/Release/Reframe.zip \
-              reframe-cli.tar.gz \
+              "build/$APP_NAME.zip" \
+              build/reframe-cli.zip \
               --clobber
           else
             gh release create "${GITHUB_REF_NAME}" \
-              build/Build/Products/Release/Reframe.zip \
-              reframe-cli.tar.gz \
+              "build/$APP_NAME.zip" \
+              build/reframe-cli.zip \
               --generate-notes
           fi
