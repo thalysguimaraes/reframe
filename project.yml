@@ -86,8 +86,6 @@ targets:
         type: file
         buildPhase: resources
       - path: Assets/AppIcon.icon
-        type: folder
-        buildPhase: resources
     attributes:
       SystemCapabilities:
         com.apple.developer.app-groups:
