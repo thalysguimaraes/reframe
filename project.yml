@@ -85,6 +85,9 @@ targets:
       - path: Assets/topbar-icon@2x.png
         type: file
         buildPhase: resources
+      - path: Assets/AppIcon.icon
+        type: folder
+        buildPhase: resources
     attributes:
       SystemCapabilities:
         com.apple.developer.app-groups:
@@ -97,6 +100,7 @@ targets:
         AutoFrameAppGroupID: $(AUTOFRAME_APP_GROUP_ID)
         NSCameraUsageDescription: Reframe needs camera access to preview and configure your selected webcam.
         NSSystemExtensionUsageDescription: Reframe installs a virtual camera extension so meeting apps can use the reframed feed.
+        CFBundleIconName: AppIcon
         LSApplicationCategoryType: public.app-category.productivity
     settings:
       base:
