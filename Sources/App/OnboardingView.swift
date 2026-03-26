@@ -8,7 +8,6 @@ struct OnboardingView: View {
         case welcome
         case cameraAccess
         case virtualCamera
-        case ready
 
         var id: Int { rawValue }
 
@@ -17,7 +16,6 @@ struct OnboardingView: View {
             case .welcome: return "Welcome"
             case .cameraAccess: return "Camera"
             case .virtualCamera: return "Virtual Camera"
-            case .ready: return "Ready"
             }
         }
 
@@ -26,7 +24,6 @@ struct OnboardingView: View {
             case .welcome: return "Smart framing for any webcam"
             case .cameraAccess: return "Give Reframe access to your camera"
             case .virtualCamera: return "Install the virtual camera"
-            case .ready: return "You're ready to go"
             }
         }
     }
@@ -48,8 +45,6 @@ struct OnboardingView: View {
                     cameraAccessStep
                 case .virtualCamera:
                     virtualCameraStep
-                case .ready:
-                    readyStep
                 }
             }
             .id(currentStep.id)
@@ -72,12 +67,12 @@ struct OnboardingView: View {
         }
         .onChange(of: model.cameraAuthorizationStatus) { _ in
             if currentStep == .cameraAccess, !requiresCameraStep {
-                moveToStep(nextRelevantStep(after: .cameraAccess))
+                advanceOrComplete(after: .cameraAccess)
             }
         }
         .onChange(of: model.extensionManager.installationState) { _ in
             if currentStep == .virtualCamera, !requiresVirtualCameraStep {
-                moveToStep(.ready)
+                model.completeOnboarding()
             }
         }
     }
@@ -99,29 +94,10 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.textHeading)
 
             Spacer()
-
-            stepProgress
         }
         .padding(.horizontal, 28)
         .padding(.top, 24)
         .padding(.bottom, 20)
-    }
-
-    private var stepProgress: some View {
-        let currentIndex = visibleSteps.firstIndex(of: currentStep) ?? 0
-
-        return HStack(spacing: 5) {
-            ForEach(Array(visibleSteps.enumerated()), id: \.element.id) { index, step in
-                Capsule()
-                    .fill(
-                        step == currentStep ? Theme.accent :
-                        index < currentIndex ? Theme.accent.opacity(0.4) :
-                        Theme.textTertiary.opacity(0.25)
-                    )
-                    .frame(width: step == currentStep ? 22 : 6, height: 6)
-                    .animation(stepAnimation, value: currentStep)
-            }
-        }
     }
 
     // MARK: - Step label + headline (shared across steps)
@@ -143,15 +119,16 @@ struct OnboardingView: View {
     // MARK: - Welcome Step
 
     private var welcomeStep: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 0) {
             stepHeader(step: .welcome)
 
             Text("Reframe centers your shot in real time so Zoom, Meet, and every other video app sees a cleaner frame.")
                 .font(.system(size: 13, design: .rounded))
                 .foregroundStyle(Theme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 20) {
                 OnboardingBullet(
                     icon: "person.crop.rectangle",
                     title: "Automatic framing",
@@ -168,6 +145,7 @@ struct OnboardingView: View {
                     detail: "Face detection and reframing stay on your Mac."
                 )
             }
+            .padding(.top, 24)
 
             Spacer(minLength: 0)
 
@@ -183,7 +161,7 @@ struct OnboardingView: View {
                 }
 
                 Button("Get started") {
-                    moveToStep(nextRelevantStep(after: .welcome))
+                    advanceOrComplete(after: .welcome)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
@@ -280,8 +258,8 @@ struct OnboardingView: View {
                 .disabled(!canRunExtensionPrimaryAction)
 
                 HStack(spacing: 10) {
-                    Button("I'll do this later") {
-                        moveToStep(.ready)
+                    Button("Skip for now") {
+                        model.completeOnboarding()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
@@ -298,116 +276,12 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Ready Step
-
-    private var readyStep: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            stepHeader(step: .ready)
-
-            Text("Your preview is live. Tight, Medium, and Wide change the framing, and Portrait mode softens the background.")
-                .font(.system(size: 13, design: .rounded))
-                .foregroundStyle(Theme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Framing mode")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Theme.textPrimary)
-
-                    SegmentedControl(
-                        selection: presetBinding,
-                        options: FramingPreset.allCases,
-                        label: \.displayName
-                    )
-                }
-
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Portrait mode")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Theme.textPrimary)
-                        Text("Blur the background while keeping you sharp.")
-                            .font(.system(size: 11, design: .rounded))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: portraitModeBinding)
-                        .toggleStyle(ControlSurfaceToggleStyle())
-                        .labelsHidden()
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Theme.backgroundControl)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(Theme.controlBorder, lineWidth: 1)
-                )
-
-                if !requiresVirtualCameraStep {
-                    OnboardingInlineStatus(message: "Virtual camera is ready, so other apps can pick Reframe immediately.")
-                } else {
-                    OnboardingInlineStatus(message: "You can keep working in the preview now and install the virtual camera later from the app.")
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            VStack(spacing: 10) {
-                Button("Start using Reframe") {
-                    model.completeOnboarding()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .tint(Theme.accent)
-                .frame(maxWidth: .infinity)
-
-                Button("Back") {
-                    moveToStep(previousRelevantStep(before: .ready))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .onAppear {
-            model.startPreviewIfNeeded()
-        }
-    }
-
-    // MARK: - Bindings
-
-    private var presetBinding: Binding<FramingPreset> {
-        Binding(
-            get: { model.selectedPreset },
-            set: { newValue in
-                model.selectedPreset = newValue
-                model.persistSettings()
-            }
-        )
-    }
-
-    private var portraitModeBinding: Binding<Bool> {
-        Binding(
-            get: { model.portraitModeEnabled },
-            set: { newValue in
-                model.portraitModeEnabled = newValue
-                model.persistSettings()
-            }
-        )
-    }
-
     // MARK: - Navigation helpers
 
     private var visibleSteps: [Step] {
         var steps: [Step] = [.welcome]
         if requiresCameraStep { steps.append(.cameraAccess) }
         if requiresVirtualCameraStep { steps.append(.virtualCamera) }
-        steps.append(.ready)
         return steps
     }
 
@@ -464,7 +338,7 @@ struct OnboardingView: View {
     private func handleCameraPrimaryAction() {
         switch model.cameraAuthorizationStatus {
         case .authorized:
-            moveToStep(nextRelevantStep(after: .cameraAccess))
+            advanceOrComplete(after: .cameraAccess)
         case .notDetermined:
             model.requestCameraAccessFromOnboarding()
         case .restricted, .denied:
@@ -476,23 +350,23 @@ struct OnboardingView: View {
 
     private func handleExtensionPrimaryAction() {
         switch model.extensionManager.installationState {
-        case .installed: moveToStep(.ready)
+        case .installed: model.completeOnboarding()
         case .awaitingUserApproval, .installedDisabled: model.openExtensionApprovalSettings()
         case .unknown, .readyToInstall, .uninstalling: model.installExtension()
         }
     }
 
-    private func nextRelevantStep(after step: Step) -> Step {
+    private func nextRelevantStep(after step: Step) -> Step? {
         switch step {
         case .welcome:
             if requiresCameraStep { return .cameraAccess }
             if requiresVirtualCameraStep { return .virtualCamera }
-            return .ready
+            return nil // all done, complete onboarding
         case .cameraAccess:
             if requiresVirtualCameraStep { return .virtualCamera }
-            return .ready
-        case .virtualCamera, .ready:
-            return .ready
+            return nil
+        case .virtualCamera:
+            return nil
         }
     }
 
@@ -501,19 +375,23 @@ struct OnboardingView: View {
         case .welcome: return .welcome
         case .cameraAccess: return .welcome
         case .virtualCamera: return requiresCameraStep ? .cameraAccess : .welcome
-        case .ready:
-            if requiresVirtualCameraStep { return .virtualCamera }
-            if requiresCameraStep { return .cameraAccess }
-            return .welcome
+        }
+    }
+
+    private func advanceOrComplete(after step: Step) {
+        if let next = nextRelevantStep(after: step) {
+            moveToStep(next)
+        } else {
+            model.completeOnboarding()
         }
     }
 
     private func reconcileCurrentStep() {
         switch currentStep {
         case .cameraAccess where !requiresCameraStep:
-            moveToStep(nextRelevantStep(after: .cameraAccess))
+            advanceOrComplete(after: .cameraAccess)
         case .virtualCamera where !requiresVirtualCameraStep:
-            moveToStep(.ready)
+            model.completeOnboarding()
         default:
             break
         }

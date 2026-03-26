@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
     @Published var portraitBlurStrength: Double
     @Published var hasPreviewFrame = false
     @Published var previewFPS = 0.0
+    @Published var normalizedFaceRect: CGRect?
     @Published var stats: FrameStatistics
     @Published var statusMessage = "Ready."
     @Published var isSidebarVisible = true
@@ -558,7 +559,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func publishFrameStatistics(_ frameStatistics: FrameStatistics, hasFace: Bool) {
+    private func publishFrameStatistics(_ frameStatistics: FrameStatistics, hasFace: Bool, faceRect: CGRect?) {
         guard pipelineActivity == nil else { return }
 
         let now = CFAbsoluteTimeGetCurrent()
@@ -574,6 +575,7 @@ final class AppModel: ObservableObject {
         var mergedStats = frameStatistics
         mergedStats.relayFPS = stats.relayFPS
         stats = mergedStats
+        normalizedFaceRect = faceRect
         previewState = .live
         statusMessage = hasFace ? "Preview running — tracking face" : "Preview running — no face found"
     }
@@ -598,7 +600,18 @@ final class AppModel: ObservableObject {
 
             Task { @MainActor in
                 guard let self else { return }
-                self.publishFrameStatistics(frame.statistics, hasFace: frame.detectedFace != nil)
+                let normalizedFace: CGRect? = {
+                    guard let face = frame.detectedFace else { return nil }
+                    let crop = frame.cropRect
+                    guard crop.width > 0, crop.height > 0 else { return nil }
+                    return CGRect(
+                        x: (face.rect.minX - crop.minX) / crop.width,
+                        y: (face.rect.minY - crop.minY) / crop.height,
+                        width: face.rect.width / crop.width,
+                        height: face.rect.height / crop.height
+                    )
+                }()
+                self.publishFrameStatistics(frame.statistics, hasFace: frame.detectedFace != nil, faceRect: normalizedFace)
             }
         }
 

@@ -94,7 +94,7 @@ struct MiniPreviewView: View {
         HStack(spacing: 10) {
             MiniQuickToggle(
                 title: "Portrait",
-                icon: "person.crop.circle.badge.sparkles",
+                icon: "person.and.background.dotted",
                 isOn: $model.portraitModeEnabled
             ) {
                 model.persistSettings()

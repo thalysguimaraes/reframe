@@ -121,7 +121,7 @@ struct AboutView: View {
         .fontDesign(.rounded)
         .padding(.top, 44)
         .padding([.horizontal, .bottom], 24)
-        .frame(width: 380, height: 560)
+        .frame(width: 420, height: 560)
         .background(Theme.backgroundWindow)
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
@@ -190,7 +190,7 @@ struct AboutView: View {
                 }
             case .installed:
                 HStack(spacing: 8) {
-                    statusBadge(title: "Installed")
+                    installedCheckBadge()
                     settingsActionButton(
                         "Reinstall",
                         disabled: !model.extensionManager.canReinstallExtension
@@ -258,6 +258,12 @@ struct AboutView: View {
                 .controlSize(.small)
                 .disabled(disabled)
         }
+    }
+
+    private func installedCheckBadge() -> some View {
+        Image(systemName: "checkmark.circle.fill")
+            .font(.system(size: 20))
+            .foregroundStyle(.white, Theme.accent)
     }
 
     private func statusBadge(title: String, background: Color = Theme.accent) -> some View {

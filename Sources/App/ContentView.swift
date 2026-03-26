@@ -12,6 +12,7 @@ struct ContentView: View {
 
     @ObservedObject var model: AppModel
     @State private var iconHovered = false
+    @State private var isHoveringStatus = false
 
     var body: some View {
         Group {
@@ -130,6 +131,9 @@ struct ContentView: View {
         ZStack {
             CameraPreviewView(model: model)
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                .overlay {
+                    FaceTrackingOverlay(faceRect: model.normalizedFaceRect, isTracking: model.trackingEnabled, isVisible: isHoveringStatus)
+                }
                 .clipShape(RoundedRectangle(cornerRadius: Theme.previewCornerRadius, style: .continuous))
                 .padding(.horizontal, Theme.previewPadding)
                 .padding(.vertical, 8)
@@ -184,6 +188,9 @@ struct ContentView: View {
                     Text(model.statusMessage)
                         .font(.system(size: 11, design: .rounded))
                         .foregroundStyle(Theme.textStatus)
+                }
+                .onHover { hovering in
+                    isHoveringStatus = hovering
                 }
 
                 Spacer()
@@ -361,5 +368,31 @@ private struct PipelineActivityOverlay: View {
             RoundedRectangle(cornerRadius: Theme.previewCornerRadius, style: .continuous)
                 .strokeBorder(Theme.previewOverlayStroke, lineWidth: 1)
         )
+    }
+}
+
+private struct FaceTrackingOverlay: View {
+    let faceRect: CGRect?
+    let isTracking: Bool
+    let isVisible: Bool
+
+    var body: some View {
+        GeometryReader { geo in
+            if isVisible, isTracking, let rect = faceRect {
+                let frame = CGRect(
+                    x: rect.minX * geo.size.width,
+                    y: rect.minY * geo.size.height,
+                    width: rect.width * geo.size.width,
+                    height: rect.height * geo.size.height
+                )
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .strokeBorder(Color.green.opacity(0.7), lineWidth: 1.5)
+                    .frame(width: frame.width, height: frame.height)
+                    .position(x: frame.midX, y: frame.midY)
+                    .animation(.easeOut(duration: 0.1), value: rect.origin.x)
+                    .animation(.easeOut(duration: 0.1), value: rect.origin.y)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isVisible)
     }
 }

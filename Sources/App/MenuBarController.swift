@@ -217,15 +217,20 @@ final class MenuBarController: NSObject {
     func updateStatusAppearance() {
         guard let button = statusItem?.button, let model else { return }
 
-        let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
-        let image = NSImage(
-            systemSymbolName: model.menuBarIconSymbolName,
-            accessibilityDescription: "Reframe"
-        )?.withSymbolConfiguration(configuration)
-        image?.isTemplate = false
+        if let mascotImage = NSImage(named: "MenuBarIcon") {
+            mascotImage.isTemplate = true
+            mascotImage.size = NSSize(width: 18, height: 18)
+            button.image = mascotImage
+        } else {
+            let configuration = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+            let image = NSImage(
+                systemSymbolName: "camera.fill",
+                accessibilityDescription: "Reframe"
+            )?.withSymbolConfiguration(configuration)
+            image?.isTemplate = true
+            button.image = image
+        }
 
-        button.image = image
-        button.contentTintColor = model.menuBarIconTintColor
         button.imagePosition = .imageOnly
         button.toolTip = model.statusMessage
     }
