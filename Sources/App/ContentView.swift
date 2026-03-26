@@ -292,11 +292,12 @@ private struct PreviewFeedbackOverlay: View {
         case .noSignal:
             ZStack {
                 Circle()
-                    .fill(Theme.signalWarningBackground)
+                    .fill(Theme.signalWarning.opacity(0.15))
                     .frame(width: 78, height: 78)
 
-                Image(systemName: "camera.badge.exclamationmark")
+                Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 34, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(Theme.signalWarning)
             }
         case .idle, .live:

@@ -127,17 +127,28 @@ struct MiniPreviewView: View {
     }
 
     private var expandButton: some View {
-        Button(action: onExpand) {
-            HStack(spacing: 4) {
-                Text("Open Full App")
-                    .font(.system(size: 12, design: .rounded))
-                Image(systemName: "arrow.up.forward")
-                    .font(.system(size: 10, weight: .medium))
+        HStack(spacing: 0) {
+            Button(action: onExpand) {
+                HStack(spacing: 4) {
+                    Text("Open Full App")
+                        .font(.system(size: 12, design: .rounded))
+                    Image(systemName: "arrow.up.forward")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundStyle(Theme.accent)
+                .frame(maxWidth: .infinity)
             }
-            .foregroundStyle(Theme.accent)
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.plain)
+
+            Button {
+                NSApp.terminate(nil)
+            } label: {
+                Text("Quit")
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -229,8 +240,9 @@ private struct MiniPreviewFeedbackOverlay: View {
                 .controlSize(.large)
                 .tint(Theme.accent)
         case .noSignal:
-            Image(systemName: "camera.badge.exclamationmark")
+            Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 28, weight: .medium))
+                .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(Theme.signalWarning)
         case .idle, .live:
             Image(systemName: "video.fill")

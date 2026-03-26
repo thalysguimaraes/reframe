@@ -3,6 +3,7 @@ import AutoFrameCore
 import AppKit
 import Foundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -16,6 +17,10 @@ final class AppModel: ObservableObject {
     @Published var trackingEnabled: Bool
     @Published var portraitModeEnabled: Bool
     @Published var portraitBlurStrength: Double
+    @Published var virtualBackgroundMode: VirtualBackgroundMode
+    @Published var virtualBackgroundGradient: GradientPreset
+    @Published var customBackgrounds: [CustomBackground]
+    @Published var selectedCustomBackgroundID: String?
     @Published var hasPreviewFrame = false
     @Published var previewFPS = 0.0
     @Published var normalizedFaceRect: CGRect?
@@ -72,6 +77,10 @@ final class AppModel: ObservableObject {
         self.trackingEnabled = settings.trackingEnabled
         self.portraitModeEnabled = settings.portraitModeEnabled
         self.portraitBlurStrength = settings.portraitBlurStrength
+        self.virtualBackgroundMode = settings.virtualBackgroundMode
+        self.virtualBackgroundGradient = settings.virtualBackgroundGradient
+        self.customBackgrounds = settings.customBackgrounds
+        self.selectedCustomBackgroundID = settings.selectedCustomBackgroundID
         self.zoomEnabled = settings.zoomStrength > 0
         self.exposure = settings.exposure
         self.contrast = settings.contrast
@@ -104,11 +113,7 @@ final class AppModel: ObservableObject {
     }
 
     var shouldKeepRunningInBackground: Bool {
-        showInMenuBar && keepRunningOnClose
-    }
-
-    var effectiveShowsDockIcon: Bool {
-        !showInMenuBar || showDockIcon
+        showInMenuBar
     }
 
     var menuBarIconSymbolName: String {
@@ -208,20 +213,6 @@ final class AppModel: ObservableObject {
         return "Retry camera"
     }
 
-    var dockIconSettingSubtitle: String {
-        if showInMenuBar {
-            return "Switch between Dock + menu bar and menu bar only."
-        }
-        return "Dock icon stays visible while menu bar mode is off."
-    }
-
-    var keepRunningSettingSubtitle: String {
-        if showInMenuBar {
-            return "Keeps Reframe running after you close the main window."
-        }
-        return "Requires menu bar mode to stay available after closing the window."
-    }
-
     private static var systemPrefersDarkMode: Bool {
         NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
     }
@@ -238,6 +229,10 @@ final class AppModel: ObservableObject {
             trackingEnabled: trackingEnabled,
             portraitModeEnabled: portraitModeEnabled,
             portraitBlurStrength: portraitBlurStrength,
+            virtualBackgroundMode: virtualBackgroundMode,
+            virtualBackgroundGradient: virtualBackgroundGradient,
+            customBackgrounds: customBackgrounds,
+            selectedCustomBackgroundID: selectedCustomBackgroundID,
             performancePolicy: performancePolicy,
             exposure: exposure,
             contrast: contrast,
@@ -260,6 +255,89 @@ final class AppModel: ObservableObject {
         vibrance = 0.0
         saturation = 1.0
         sharpness = 0.0
+        persistSettings()
+    }
+
+    func enableVirtualBackground(mode: VirtualBackgroundMode) {
+        virtualBackgroundMode = mode
+        if mode != .off {
+            portraitModeEnabled = false
+        }
+        persistSettings()
+    }
+
+    func enablePortraitMode(_ enabled: Bool) {
+        portraitModeEnabled = enabled
+        if enabled {
+            virtualBackgroundMode = .off
+        }
+        persistSettings()
+    }
+
+    func importVirtualBackgroundImage() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose a background image"
+
+        NSApp.activate(ignoringOtherApps: true)
+        panel.begin { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            Task { @MainActor in
+                self.copyAndApplyBackgroundImage(from: url)
+            }
+        }
+    }
+
+    private func copyAndApplyBackgroundImage(from url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        let nextIndex = customBackgrounds.count + 1
+        let id = UUID().uuidString
+        let fileName = "virtual-bg-\(id).\(url.pathExtension)"
+        let container = SharedStorage.containerDirectory()
+        let dest = container.appendingPathComponent(fileName)
+
+        do {
+            try FileManager.default.copyItem(at: url, to: dest)
+            let bg = CustomBackground(id: id, name: "Custom \(nextIndex)", fileName: fileName)
+            customBackgrounds.append(bg)
+            selectedCustomBackgroundID = id
+            virtualBackgroundMode = .customImage
+            portraitModeEnabled = false
+            persistSettings()
+        } catch {
+            NSLog("[AutoFrame] Failed to copy background image: %@", "\(error)")
+        }
+    }
+
+    func selectCustomBackground(_ id: String) {
+        selectedCustomBackgroundID = id
+        virtualBackgroundMode = .customImage
+        portraitModeEnabled = false
+        persistSettings()
+    }
+
+    func removeCustomBackground(_ id: String) {
+        guard let bg = customBackgrounds.first(where: { $0.id == id }) else { return }
+        let container = SharedStorage.containerDirectory()
+        let path = container.appendingPathComponent(bg.fileName)
+        try? FileManager.default.removeItem(at: path)
+        customBackgrounds.removeAll { $0.id == id }
+        if selectedCustomBackgroundID == id {
+            selectedCustomBackgroundID = nil
+            if virtualBackgroundMode == .customImage {
+                virtualBackgroundMode = customBackgrounds.isEmpty ? .off : .gradient
+            }
+        }
+        persistSettings()
+    }
+
+    func renameCustomBackground(_ id: String, to newName: String) {
+        guard let index = customBackgrounds.firstIndex(where: { $0.id == id }) else { return }
+        customBackgrounds[index].name = newName
         persistSettings()
     }
 

@@ -15,6 +15,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
     private let reframer = PixelBufferReframer()
     private let imageAdjustmentCompositor = ImageAdjustmentCompositor()
     private let portraitCompositor = PortraitCompositor()
+    private let virtualBackgroundCompositor = VirtualBackgroundCompositor()
     private let captureQueue = DispatchQueue(label: "dev.autoframe.pipeline.capture", qos: .userInitiated)
     private let captureStateQueue = DispatchQueue(label: "dev.autoframe.pipeline.capture-state", qos: .userInitiated)
     private let processingQueue = DispatchQueue(label: "dev.autoframe.pipeline.processing", qos: .userInitiated)
@@ -451,9 +452,15 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
         // Image adjustments: exposure, contrast, white balance, vibrance, saturation, sharpness.
         let adjustedBuffer = imageAdjustmentCompositor.apply(to: reframedBuffer, settings: settings) ?? reframedBuffer
 
-        // Portrait mode: apply person segmentation + background blur.
+        // Background effects: virtual background or portrait blur (mutually exclusive).
         let outputBuffer: CVPixelBuffer
-        if settings.portraitModeEnabled && !processingProfile.disablesPortraitEffects {
+        if settings.virtualBackgroundMode != .off && !processingProfile.disablesPortraitEffects {
+            outputBuffer = virtualBackgroundCompositor.apply(
+                to: adjustedBuffer,
+                settings: settings,
+                profile: processingProfile
+            ) ?? adjustedBuffer
+        } else if settings.portraitModeEnabled && !processingProfile.disablesPortraitEffects {
             outputBuffer = portraitCompositor.apply(
                 to: adjustedBuffer,
                 blurStrength: settings.portraitBlurStrength,
@@ -603,6 +610,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
             faceStabilizer.reset()
             faceDetector.reset()
             portraitCompositor.reset()
+            virtualBackgroundCompositor.reset()
             imageAdjustmentCompositor.reset()
             lastDetectedFace = nil
             consecutiveDetectionMisses = 0
@@ -614,6 +622,7 @@ public final class AutoFramePipeline: NSObject, AVCaptureVideoDataOutputSampleBu
         faceStabilizer.reset()
         faceDetector.reset()
         portraitCompositor.reset()
+        virtualBackgroundCompositor.reset()
         imageAdjustmentCompositor.reset()
         adaptiveQualityController.reset()
         frameIndex = 0

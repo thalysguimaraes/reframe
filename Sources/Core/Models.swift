@@ -150,6 +150,40 @@ public enum PerformancePolicy: String, CaseIterable, Codable, Identifiable, Send
     public var id: String { rawValue }
 }
 
+public enum GradientPreset: String, CaseIterable, Codable, Identifiable, Sendable {
+    case warmSunset
+    case coolOcean
+    case softLavender
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .warmSunset: return "Sunset"
+        case .coolOcean: return "Ocean"
+        case .softLavender: return "Lavender"
+        }
+    }
+}
+
+public enum VirtualBackgroundMode: String, Codable, Equatable, Sendable {
+    case off
+    case gradient
+    case customImage
+}
+
+public struct CustomBackground: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+    public var fileName: String
+
+    public init(id: String = UUID().uuidString, name: String, fileName: String) {
+        self.id = id
+        self.name = name
+        self.fileName = fileName
+    }
+}
+
 public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var hasCompletedOnboarding: Bool
     public var cameraID: String?
@@ -164,6 +198,10 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     public var confidenceThreshold: Float
     public var portraitModeEnabled: Bool
     public var portraitBlurStrength: Double
+    public var virtualBackgroundMode: VirtualBackgroundMode
+    public var virtualBackgroundGradient: GradientPreset
+    public var customBackgrounds: [CustomBackground]
+    public var selectedCustomBackgroundID: String?
     public var performancePolicy: PerformancePolicy
     public var exposure: Double
     public var contrast: Double
@@ -190,6 +228,10 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         confidenceThreshold: Float = 0.4,
         portraitModeEnabled: Bool = false,
         portraitBlurStrength: Double = 0.5,
+        virtualBackgroundMode: VirtualBackgroundMode = .off,
+        virtualBackgroundGradient: GradientPreset = .warmSunset,
+        customBackgrounds: [CustomBackground] = [],
+        selectedCustomBackgroundID: String? = nil,
         performancePolicy: PerformancePolicy = .adaptive,
         exposure: Double = 0.0,
         contrast: Double = 1.0,
@@ -215,6 +257,10 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         self.confidenceThreshold = confidenceThreshold
         self.portraitModeEnabled = portraitModeEnabled
         self.portraitBlurStrength = portraitBlurStrength
+        self.virtualBackgroundMode = virtualBackgroundMode
+        self.virtualBackgroundGradient = virtualBackgroundGradient
+        self.customBackgrounds = customBackgrounds
+        self.selectedCustomBackgroundID = selectedCustomBackgroundID
         self.performancePolicy = performancePolicy
         self.exposure = exposure
         self.contrast = contrast
@@ -231,7 +277,9 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case hasCompletedOnboarding, cameraID, outputResolution, framingPreset, smoothing, zoomStrength, deadZone
         case trackingEnabled, detectionStride, lostFaceHoldFrames, confidenceThreshold
-        case portraitModeEnabled, portraitBlurStrength, performancePolicy
+        case portraitModeEnabled, portraitBlurStrength
+        case virtualBackgroundMode, virtualBackgroundGradient, customBackgrounds, selectedCustomBackgroundID
+        case performancePolicy
         case exposure, contrast, temperature, tint, vibrance, saturation, sharpness
         case showInMenuBar, showDockIcon, keepRunningOnClose
     }
@@ -252,6 +300,10 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         confidenceThreshold = try container.decodeIfPresent(Float.self, forKey: .confidenceThreshold) ?? 0.4
         portraitModeEnabled = try container.decodeIfPresent(Bool.self, forKey: .portraitModeEnabled) ?? false
         portraitBlurStrength = try container.decodeIfPresent(Double.self, forKey: .portraitBlurStrength) ?? 0.5
+        virtualBackgroundMode = try container.decodeIfPresent(VirtualBackgroundMode.self, forKey: .virtualBackgroundMode) ?? .off
+        virtualBackgroundGradient = try container.decodeIfPresent(GradientPreset.self, forKey: .virtualBackgroundGradient) ?? .warmSunset
+        customBackgrounds = try container.decodeIfPresent([CustomBackground].self, forKey: .customBackgrounds) ?? []
+        selectedCustomBackgroundID = try container.decodeIfPresent(String.self, forKey: .selectedCustomBackgroundID)
         performancePolicy = try container.decodeIfPresent(PerformancePolicy.self, forKey: .performancePolicy) ?? .adaptive
         exposure = try container.decodeIfPresent(Double.self, forKey: .exposure) ?? 0.0
         contrast = try container.decodeIfPresent(Double.self, forKey: .contrast) ?? 1.0
@@ -280,6 +332,10 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
         try container.encode(confidenceThreshold, forKey: .confidenceThreshold)
         try container.encode(portraitModeEnabled, forKey: .portraitModeEnabled)
         try container.encode(portraitBlurStrength, forKey: .portraitBlurStrength)
+        try container.encode(virtualBackgroundMode, forKey: .virtualBackgroundMode)
+        try container.encode(virtualBackgroundGradient, forKey: .virtualBackgroundGradient)
+        try container.encode(customBackgrounds, forKey: .customBackgrounds)
+        try container.encodeIfPresent(selectedCustomBackgroundID, forKey: .selectedCustomBackgroundID)
         try container.encode(performancePolicy, forKey: .performancePolicy)
         try container.encode(exposure, forKey: .exposure)
         try container.encode(contrast, forKey: .contrast)
@@ -294,6 +350,13 @@ public struct AutoFrameSettings: Codable, Equatable, Sendable {
     }
 
     public static let `default` = AutoFrameSettings()
+
+    public var selectedCustomBackgroundPath: String? {
+        guard let id = selectedCustomBackgroundID,
+              let bg = customBackgrounds.first(where: { $0.id == id }) else { return nil }
+        let container = SharedStorage.containerDirectory()
+        return container.appendingPathComponent(bg.fileName).path
+    }
 }
 
 public struct CameraDeviceDescriptor: Identifiable, Codable, Equatable, Sendable {

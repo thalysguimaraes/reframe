@@ -39,7 +39,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        !(model?.shouldKeepRunningInBackground ?? false)
+        false
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard model?.showInMenuBar == true else {
+            return .terminateNow
+        }
+
+        let alert = NSAlert()
+        alert.messageText = "Quit Reframe?"
+        alert.informativeText = "The virtual camera and menu bar controls will stop running."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+
+        let response = alert.runModal()
+        return response == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -53,30 +69,33 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         sender.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
         return false
     }
 
     func showMainWindow() {
         guard let window = resolvedMainWindow() else { return }
 
+        NSApp.setActivationPolicy(.regular)
+
         if window.isMiniaturized {
             window.deminiaturize(nil)
         }
 
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
+        }
     }
 
     private func bindModel(_ model: AppModel) {
-        Publishers.CombineLatest(
-            model.$showInMenuBar.removeDuplicates(),
-            model.$showDockIcon.removeDuplicates()
-        )
-        .sink { [weak self] _, _ in
-            self?.refreshPresentationOptions()
-        }
-        .store(in: &cancellables)
+        model.$showInMenuBar
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.refreshPresentationOptions()
+            }
+            .store(in: &cancellables)
 
         model.$previewState
             .removeDuplicates()
@@ -152,12 +171,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         menuBarController.setVisible(model.showInMenuBar)
         menuBarController.updateStatusAppearance()
-        updateActivationPolicy(using: model)
-    }
 
-    private func updateActivationPolicy(using model: AppModel) {
-        let policy: NSApplication.ActivationPolicy = model.effectiveShowsDockIcon ? .regular : .accessory
-        NSApp.setActivationPolicy(policy)
+        let hasVisibleWindow = resolvedMainWindow()?.isVisible == true
+        if hasVisibleWindow || !model.showInMenuBar {
+            NSApp.setActivationPolicy(.regular)
+        } else {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     private func resolvedMainWindow() -> NSWindow? {

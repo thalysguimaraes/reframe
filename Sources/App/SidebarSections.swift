@@ -529,12 +529,12 @@ struct PortraitSectionView: View {
             HStack {
                 SidebarSectionHeader(title: "Portrait", icon: "person.and.background.dotted")
                 Spacer()
-                Toggle("", isOn: $model.portraitModeEnabled)
+                Toggle("", isOn: Binding(
+                    get: { model.portraitModeEnabled },
+                    set: { model.enablePortraitMode($0) }
+                ))
                     .toggleStyle(ControlSurfaceToggleStyle())
                     .labelsHidden()
-                    .onChange(of: model.portraitModeEnabled) { _ in
-                        model.persistSettings()
-                    }
             }
 
             if model.portraitModeEnabled {

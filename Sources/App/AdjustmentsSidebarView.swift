@@ -128,6 +128,13 @@ struct AdjustmentsSidebarView: View {
 
                     sectionDivider
 
+                    // Background
+                    sectionBlock {
+                        VirtualBackgroundSectionView(model: model)
+                    }
+
+                    sectionDivider
+
                     // Reset
                     sectionBlock {
                         Button {
@@ -322,5 +329,236 @@ private struct GradientSlider: View {
             )
         }
         .frame(height: 20)
+    }
+}
+
+// MARK: - Virtual Background
+
+struct VirtualBackgroundSectionView: View {
+    @ObservedObject var model: AppModel
+
+    private var isEnabled: Bool {
+        model.virtualBackgroundMode != .off
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                SidebarSectionHeader(title: "Background", icon: "photo.on.rectangle")
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { isEnabled },
+                    set: { newValue in
+                        if newValue {
+                            model.enableVirtualBackground(mode: .gradient)
+                        } else {
+                            model.enableVirtualBackground(mode: .off)
+                        }
+                    }
+                ))
+                    .toggleStyle(ControlSurfaceToggleStyle())
+                    .labelsHidden()
+            }
+
+            if isEnabled {
+                VStack(alignment: .leading, spacing: 10) {
+                    // Use a grid layout that wraps: 4 columns
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        // Gradient presets
+                        ForEach(GradientPreset.allCases) { preset in
+                            GradientPresetButton(
+                                preset: preset,
+                                isSelected: model.virtualBackgroundMode == .gradient
+                                    && model.virtualBackgroundGradient == preset,
+                                action: {
+                                    model.virtualBackgroundGradient = preset
+                                    model.enableVirtualBackground(mode: .gradient)
+                                }
+                            )
+                        }
+
+                        // Custom backgrounds
+                        ForEach(model.customBackgrounds) { bg in
+                            CustomBackgroundButton(
+                                background: bg,
+                                isSelected: model.virtualBackgroundMode == .customImage
+                                    && model.selectedCustomBackgroundID == bg.id,
+                                onSelect: { model.selectCustomBackground(bg.id) },
+                                onDelete: { model.removeCustomBackground(bg.id) },
+                                onRename: { newName in model.renameCustomBackground(bg.id, to: newName) }
+                            )
+                        }
+
+                        // Add button
+                        AddBackgroundButton {
+                            model.importVirtualBackgroundImage()
+                        }
+                    }
+
+                    Text("Replaces the background while keeping you sharp.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textTertiary)
+                }
+                .transition(.opacity)
+            }
+        }
+        .clipped()
+        .animation(.easeInOut(duration: 0.2), value: isEnabled)
+    }
+}
+
+private struct GradientPresetButton: View {
+    let preset: GradientPreset
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(gradientFill)
+                    .frame(height: 36)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(isSelected ? Theme.accent : Theme.controlBorder, lineWidth: isSelected ? 2 : 1)
+                    )
+
+                Text(preset.displayName)
+                    .font(.system(size: 9, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? Theme.accent : Theme.textTertiary)
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var gradientFill: LinearGradient {
+        switch preset {
+        case .warmSunset:
+            return LinearGradient(
+                colors: [Color(red: 0.95, green: 0.45, blue: 0.25), Color(red: 0.45, green: 0.20, blue: 0.55)],
+                startPoint: .bottom, endPoint: .top
+            )
+        case .coolOcean:
+            return LinearGradient(
+                colors: [Color(red: 0.10, green: 0.55, blue: 0.70), Color(red: 0.15, green: 0.20, blue: 0.45)],
+                startPoint: .bottom, endPoint: .top
+            )
+        case .softLavender:
+            return LinearGradient(
+                colors: [Color(red: 0.85, green: 0.80, blue: 0.95), Color(red: 0.95, green: 0.92, blue: 0.98)],
+                startPoint: .bottom, endPoint: .top
+            )
+        }
+    }
+}
+
+private struct CustomBackgroundButton: View {
+    let background: CustomBackground
+    let isSelected: Bool
+    let onSelect: () -> Void
+    let onDelete: () -> Void
+    let onRename: (String) -> Void
+
+    @State private var isEditing = false
+    @State private var editName = ""
+
+    var body: some View {
+        Button(action: onSelect) {
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Theme.backgroundControl)
+                        .frame(height: 36)
+
+                    let path = SharedStorage.containerDirectory()
+                        .appendingPathComponent(background.fileName).path
+                    if let nsImage = NSImage(contentsOfFile: path) {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(height: 36)
+                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .strokeBorder(isSelected ? Theme.accent : Theme.controlBorder, lineWidth: isSelected ? 2 : 1)
+                )
+
+                Text(background.name)
+                    .font(.system(size: 9, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? Theme.accent : Theme.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button("Rename…") {
+                editName = background.name
+                isEditing = true
+            }
+            Divider()
+            Button("Delete", role: .destructive) {
+                onDelete()
+            }
+        }
+        .popover(isPresented: $isEditing) {
+            VStack(spacing: 8) {
+                Text("Rename Background")
+                    .font(.system(size: 12, weight: .semibold))
+                TextField("Name", text: $editName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 160)
+                    .onSubmit {
+                        if !editName.isEmpty {
+                            onRename(editName)
+                        }
+                        isEditing = false
+                    }
+                HStack {
+                    Button("Cancel") { isEditing = false }
+                        .buttonStyle(.bordered)
+                    Button("Save") {
+                        if !editName.isEmpty {
+                            onRename(editName)
+                        }
+                        isEditing = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Theme.accent)
+                }
+            }
+            .padding(12)
+        }
+    }
+}
+
+private struct AddBackgroundButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Theme.backgroundControl)
+                    .frame(height: 36)
+                    .overlay {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Theme.textTertiary)
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .strokeBorder(Theme.controlBorder, lineWidth: 1)
+                    )
+
+                Text("Add")
+                    .font(.system(size: 9))
+                    .foregroundStyle(Theme.textTertiary)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }

@@ -64,42 +64,6 @@ struct AboutView: View {
                     .fill(Theme.divider)
                     .frame(height: 1)
 
-                settingsRow(
-                    icon: "square.grid.2x2",
-                    label: "Show Dock icon",
-                    subtitle: model.dockIconSettingSubtitle
-                ) {
-                    Toggle("", isOn: $model.showDockIcon)
-                        .toggleStyle(ControlSurfaceToggleStyle())
-                        .labelsHidden()
-                        .disabled(!model.showInMenuBar)
-                        .onChange(of: model.showDockIcon) { _ in
-                            model.persistSettings()
-                        }
-                }
-
-                Rectangle()
-                    .fill(Theme.divider)
-                    .frame(height: 1)
-
-                settingsRow(
-                    icon: "rectangle.inset.filled.and.person.filled",
-                    label: "Keep running on close",
-                    subtitle: model.keepRunningSettingSubtitle
-                ) {
-                    Toggle("", isOn: $model.keepRunningOnClose)
-                        .toggleStyle(ControlSurfaceToggleStyle())
-                        .labelsHidden()
-                        .disabled(!model.showInMenuBar)
-                        .onChange(of: model.keepRunningOnClose) { _ in
-                            model.persistSettings()
-                        }
-                }
-
-                Rectangle()
-                    .fill(Theme.divider)
-                    .frame(height: 1)
-
                 // Virtual Camera
                 settingsRow(
                     icon: "web.camera",
