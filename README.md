@@ -5,17 +5,16 @@
 <h1 align="center">Reframe</h1>
 
 <p align="center">
-  <strong>Open-source virtual camera with smart framing and portrait mode for macOS</strong><br>
+  <strong>Open-source virtual camera with smart framing, virtual backgrounds, and portrait mode for macOS</strong><br>
   Center Stage for any webcam.
 </p>
 
 <p align="center">
+  <a href="https://github.com/thalysguimaraes/reframe/releases/latest">Download</a> &bull;
   <a href="#features">Features</a> &bull;
-  <a href="#installation">Installation</a> &bull;
   <a href="#usage">Usage</a> &bull;
   <a href="#how-it-works">How it works</a> &bull;
   <a href="#building-from-source">Building from source</a> &bull;
-  <a href="#contributing">Contributing</a> &bull;
   <a href="#license">License</a>
 </p>
 
@@ -30,41 +29,31 @@ No cloud. No subscription. No tracking. Just better framing.
 - **Works with any camera** — USB webcams, monitors with built-in cameras, capture cards
 - **Virtual camera output** — shows up as "Reframe" in Zoom, Meet, Teams, FaceTime, OBS, etc.
 - **Smart framing** — face detection + smooth crop with proper headroom (rule-of-thirds positioning)
+- **Virtual backgrounds** — replace your background with gradient presets or your own images
+- **Portrait mode** — on-device person segmentation with adjustable background blur
+- **Image adjustments** — exposure, contrast, temperature, tint, vibrance, saturation, sharpness
+- **Menu bar mini mode** — live preview and quick controls without opening the main window
 - **Asymmetric smoothing** — zoom-in is snappy, zoom-out is gentle, inspired by Apple's Center Stage behavior
 - **Comfort zone** — small movements don't trigger reframing; only meaningful motion causes a pan
 - **Lost-face fallback** — holds framing briefly when you look away, then smoothly widens back
 - **Hardware Center Stage aware** — if your camera already has hardware Center Stage, Reframe backs off instead of double-framing
-- **Preset framing modes** — Tight, Medium, Wide
-- **Adjustable controls** — Follow smoothness, Zoom strength
-- **CLI tool** — headless camera discovery and configuration
+- **Preset framing modes** — Tight, Medium, Wide with adjustable zoom strength
+- **CLI tool** — headless camera discovery and configuration via `reframe`
 - **Native Swift** — no Electron, no bridge layers, minimal resource usage
 - **Privacy-first** — all processing is on-device via Apple Vision; no data leaves your Mac
 
-## Requirements
-
-- macOS 13.0+
-- A physical camera (USB webcam, built-in, or capture card)
-- Xcode 15+ (for building from source)
-
 ## Installation
 
-### Download
+Download the latest DMG from the [Releases](https://github.com/thalysguimaraes/reframe/releases/latest) page, open it, and drag **Reframe** to Applications.
 
-Pre-built releases will be available on the [Releases](https://github.com/thalysguimaraes/reframe/releases) page.
-
-### Homebrew (coming soon)
-
-```bash
-brew install --cask reframe
-```
+Requires macOS 13+.
 
 ## Usage
 
 1. **Launch Reframe** and grant camera access when prompted
 2. **Select your source camera** from the dropdown
-3. **Enable tracking** — your face will be centered automatically
-4. **Install the virtual camera** — click "Install Virtual Camera" to register the system extension
-5. **Select "Reframe"** as your camera in Zoom, Meet, Teams, or any video app
+3. **Install the virtual camera** — the onboarding will guide you through the system extension approval
+4. **Select "Reframe"** as your camera in Zoom, Meet, Teams, or any video app
 
 ### Controls
 
@@ -72,10 +61,12 @@ brew install --cask reframe
 |---------|-------------|
 | **Source camera** | Which physical camera to read from |
 | **Output** | 720p or 1080p output resolution |
-| **Preset** | Tight / Medium / Wide framing |
-| **Follow smoothness** | How smoothly the crop tracks your face (higher = smoother but laggier) |
+| **Framing preset** | Tight / Medium / Wide |
+| **Smoothness** | How smoothly the crop tracks your face |
 | **Zoom strength** | How aggressively to zoom in on your face |
-| **Tracking enabled** | Toggle face tracking on/off |
+| **Portrait mode** | Background blur with adjustable strength |
+| **Virtual background** | Replace background with gradients or custom images |
+| **Adjustments** | Exposure, contrast, temperature, tint, vibrance, saturation, sharpness |
 
 ### CLI
 
@@ -83,6 +74,7 @@ brew install --cask reframe
 reframe list-cameras
 reframe start --camera "Logitech C920" --preset medium --output 1080p
 reframe set --smoothing 0.82 --zoom-strength 0.6
+reframe tracking on|off
 reframe print-stats
 reframe stop
 ```
@@ -105,14 +97,16 @@ Physical Camera
     |   - comfort zone dead-band stabilization
     |   - lost-face hold + gradual fallback
     |
-[PixelBufferReframer] — CoreImage crop + scale to output resolution
+[ImageAdjustmentCompositor] — exposure, contrast, white balance, sharpness
+    |
+[PortraitCompositor / VirtualBackgroundCompositor]
+    |   - VNGeneratePersonSegmentationRequest for person mask
+    |   - CIBlendWithMask compositing (blur or background replacement)
     |
 [Virtual Camera] — CoreMediaIO system extension
     |
 Zoom / Meet / Teams / FaceTime
 ```
-
-The framing algorithm was developed by studying Apple's Center Stage implementation in `AVFCapture.framework` to match the behavior users expect from hardware face-tracking cameras.
 
 ## Building from source
 
@@ -127,9 +121,7 @@ xcodegen generate
 open Reframe.xcodeproj
 ```
 
-Before trying to install the virtual camera, create the App Group `group.dev.autoframe.cam` in Apple Developer and attach it to both `dev.autoframe.AutoFrameCam` and `dev.autoframe.AutoFrameCam.CameraExtension`. The generated provisioning profiles must include that exact App Group value, and the camera extension's `CMIOExtensionMachServiceName` must match it exactly for Core Media I/O validation to pass.
-
-The product is branded as Reframe, but the Apple Developer bundle IDs remain on the legacy `AutoFrameCam` identifiers until the signing assets and provisioning profiles are rotated.
+Before installing the virtual camera from a local build, create the App Group `group.dev.autoframe.cam` in Apple Developer and attach it to both `dev.autoframe.AutoFrameCam` and `dev.autoframe.AutoFrameCam.CameraExtension`. The generated provisioning profiles must include that exact App Group value.
 
 ### Terminal build
 
@@ -148,14 +140,14 @@ xcodebuild -project Reframe.xcodeproj -scheme "Reframe" test
 
 ```
 Sources/
-  Core/           — shared capture, detection, crop, and persistence logic
+  Core/           — shared capture, detection, crop, compositing, and persistence
   App/            — SwiftUI control surface and extension installer
   CameraExtension/ — CoreMediaIO virtual camera system extension
   CLI/            — command-line tool
 Tests/
-  AutoFrameCoreTests/ — crop engine and stabilizer tests
+  AutoFrameCoreTests/ — crop engine, stabilizer, settings, and compositor tests
 Config/           — entitlements and Info.plist templates
-Assets/           — app icon
+Assets/           — app icon and menu bar icon
 project.yml       — XcodeGen project specification
 ```
 
@@ -168,14 +160,6 @@ Contributions are welcome. Please open an issue first to discuss what you'd like
 3. Make your changes and add tests
 4. Run the test suite (`xcodebuild -scheme "Reframe" test`)
 5. Open a pull request
-
-### Areas where help is appreciated
-
-- Multi-person framing support
-- Background replacement / virtual backgrounds
-- MediaPipe integration for faster/better face detection
-- Homebrew cask formula
-- Localization
 
 ## License
 
