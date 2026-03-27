@@ -8,14 +8,21 @@ import os.log
 
 private let logger = Logger(subsystem: "dev.autoframe.reframe.camera-extension", category: "provider")
 
+private func describe(client: CMIOExtensionClient) -> String {
+    let signingID = client.signingID ?? "unknown"
+    return "pid=\(client.pid) signingID=\(signingID) clientID=\(client.clientID.uuidString)"
+}
+
 final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private(set) var device: CMIOExtensionDevice!
     private var streamSource: ReframeCameraStreamSource!
     private let frameStore = SharedVideoFrameStore.shared
     private let statsStore = SharedStatsStore.shared
+    private let virtualCameraDemandStore = SharedVirtualCameraDemandStore.shared
     private let relayQueue = DispatchQueue(label: "dev.autoframe.reframe.camera-extension.relay", qos: .userInitiated)
     private let stateQueue = DispatchQueue(label: "dev.autoframe.reframe.camera-extension.state")
     private let reframer = PixelBufferReframer()
+    private let preflightDemandGraceInterval: TimeInterval = 5.0
 
     private var activeStreamCount = 0
     private var lastRelayLogMessage = ""
@@ -23,10 +30,16 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     private var activeFormat = VirtualCameraFormat(resolution: .hd720, frameRate: OutputResolution.hd720.preferredFrameRate)
     private var placeholderBuffers: [OutputResolution: CVPixelBuffer] = [:]
     private var relayFPSWindow: [CFAbsoluteTime] = []
+    private var demandHeartbeatTimer: DispatchSourceTimer?
     private var streamingTimer: DispatchSourceTimer?
+    private var preflightDemandDeadline: Date?
 
     override init() {
         super.init()
+
+        ExtensionBootstrapTrace.log("device-source: init started")
+        virtualCameraDemandStore.clear()
+        ExtensionBootstrapTrace.log("device-source: cleared virtual camera demand store")
 
         device = CMIOExtensionDevice(
             localizedName: AppConstants.virtualCameraName,
@@ -34,18 +47,32 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             legacyDeviceID: AppConstants.virtualCameraName,
             source: self
         )
+        ExtensionBootstrapTrace.log("device-source: created CMIOExtensionDevice")
 
         streamSource = ReframeCameraStreamSource(
             localizedName: "\(AppConstants.virtualCameraName).Video",
             streamID: AppConstants.virtualStreamUUID,
             device: device
         )
+        ExtensionBootstrapTrace.log("device-source: created stream source")
 
         do {
             try device.addStream(streamSource.stream)
+            ExtensionBootstrapTrace.log("device-source: added stream to device")
         } catch {
+            ExtensionBootstrapTrace.log("device-source: failed to add stream: \(error.localizedDescription)")
             fatalError("Failed to add CMIO stream: \(error.localizedDescription)")
         }
+    }
+
+    deinit {
+        stateQueue.sync {
+            demandHeartbeatTimer?.cancel()
+            demandHeartbeatTimer = nil
+            streamingTimer?.cancel()
+            streamingTimer = nil
+        }
+        virtualCameraDemandStore.clear()
     }
 
     var availableProperties: Set<CMIOExtensionProperty> {
@@ -67,10 +94,13 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
 
     fileprivate func startStreaming(format: VirtualCameraFormat) {
         var timerToStart: DispatchSourceTimer?
-        stateQueue.sync {
-            activeStreamCount += 1
+        let consumerCount = stateQueue.sync { () -> Int in
+            self.activeStreamCount += 1
             activeFormat = format
-            guard streamingTimer == nil else { return }
+            preflightDemandDeadline = nil
+            let demandCount = demandConsumerCountLocked(now: Date())
+            ensureDemandHeartbeatTimerLocked()
+            guard streamingTimer == nil else { return demandCount }
 
             let timer = DispatchSource.makeTimerSource(queue: relayQueue)
             schedule(timer: timer, for: format)
@@ -79,27 +109,61 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             }
             streamingTimer = timer
             timerToStart = timer
+            return demandCount
         }
 
+        virtualCameraDemandStore.setActiveConsumerCount(consumerCount)
         timerToStart?.resume()
         if timerToStart != nil {
-            logger.info("Started virtual camera relay.")
+            logger.info("Started virtual camera relay. activeStreamCount=\(consumerCount, privacy: .public)")
         }
+    }
+
+    fileprivate func noteClientAuthorizedToStartStream() {
+        let consumerCount = stateQueue.sync { () -> Int in
+            let now = Date()
+            preflightDemandDeadline = now.addingTimeInterval(preflightDemandGraceInterval)
+            ensureDemandHeartbeatTimerLocked()
+            return demandConsumerCountLocked(now: now)
+        }
+
+        virtualCameraDemandStore.setActiveConsumerCount(consumerCount)
+    }
+
+    fileprivate func noteClientDisconnected() {
+        let consumerCount = stateQueue.sync { () -> Int in
+            let now = Date()
+            if activeStreamCount == 0 {
+                preflightDemandDeadline = nil
+            }
+            stopDemandHeartbeatTimerIfIdleLocked(now: now)
+            return demandConsumerCountLocked(now: now)
+        }
+
+        virtualCameraDemandStore.setActiveConsumerCount(consumerCount)
     }
 
     func stopStreaming() {
         var timerToCancel: DispatchSourceTimer?
-        stateQueue.sync {
-            activeStreamCount = max(0, activeStreamCount - 1)
-            guard activeStreamCount == 0 else { return }
+        let consumerCount = stateQueue.sync { () -> Int in
+            self.activeStreamCount = max(0, self.activeStreamCount - 1)
+            let now = Date()
+            if self.activeStreamCount == 0 {
+                preflightDemandDeadline = nil
+            }
+            let demandCount = demandConsumerCountLocked(now: now)
+            stopDemandHeartbeatTimerIfIdleLocked(now: now)
+            guard self.activeStreamCount == 0 else { return demandCount }
             timerToCancel = streamingTimer
             streamingTimer = nil
             relayFPSWindow.removeAll(keepingCapacity: true)
+            return demandCount
         }
 
+        virtualCameraDemandStore.setActiveConsumerCount(consumerCount)
         timerToCancel?.cancel()
         if timerToCancel != nil {
-            logger.info("Stopped virtual camera relay.")
+            logger.info("Stopped virtual camera relay. remainingDemandCount=\(consumerCount, privacy: .public)")
         }
     }
 
@@ -113,7 +177,14 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
     }
 
     private func relayNextFrame() {
-        let format = stateQueue.sync { activeFormat }
+        let relayState = stateQueue.sync { (activeFormat, self.activeStreamCount) }
+        let format = relayState.0
+        let consumerCount = relayState.1
+
+        if consumerCount > 0 {
+            virtualCameraDemandStore.heartbeat(activeConsumerCount: consumerCount)
+        }
+
         let pixelBuffer = loadOutputPixelBuffer(for: format) ?? placeholderBuffer(for: format.resolution)
         guard let pixelBuffer else { return }
         send(pixelBuffer: pixelBuffer, format: format)
@@ -181,6 +252,29 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
             $0.outputWidth = Int(format.resolution.size.width)
             $0.outputHeight = Int(format.resolution.size.height)
         }
+    }
+
+    private func publishDemandHeartbeat() {
+        let (consumerCount, shouldClearDemand) = stateQueue.sync { () -> (Int, Bool) in
+            let now = Date()
+            let demandCount = demandConsumerCountLocked(now: now)
+            if demandCount == 0 {
+                demandHeartbeatTimer?.cancel()
+                demandHeartbeatTimer = nil
+                return (0, true)
+            }
+            return (demandCount, false)
+        }
+
+        if shouldClearDemand {
+            virtualCameraDemandStore.clear()
+            return
+        }
+
+        virtualCameraDemandStore.heartbeat(
+            activeConsumerCount: consumerCount,
+            minimumInterval: 0.5
+        )
     }
 
     private func placeholderBuffer(for outputResolution: OutputResolution) -> CVPixelBuffer? {
@@ -275,6 +369,36 @@ final class ReframeCameraDeviceSource: NSObject, CMIOExtensionDeviceSource {
         }
         return Double(timestamps.count - 1) / (last - first)
     }
+
+    private func ensureDemandHeartbeatTimerLocked() {
+        guard demandHeartbeatTimer == nil else { return }
+
+        let timer = DispatchSource.makeTimerSource(queue: relayQueue)
+        timer.schedule(deadline: .now(), repeating: .seconds(1), leeway: .milliseconds(100))
+        timer.setEventHandler { [weak self] in
+            self?.publishDemandHeartbeat()
+        }
+        demandHeartbeatTimer = timer
+        timer.resume()
+    }
+
+    private func stopDemandHeartbeatTimerIfIdleLocked(now: Date) {
+        guard demandConsumerCountLocked(now: now) == 0 else { return }
+        demandHeartbeatTimer?.cancel()
+        demandHeartbeatTimer = nil
+    }
+
+    private func demandConsumerCountLocked(now: Date) -> Int {
+        if activeStreamCount > 0 {
+            return activeStreamCount
+        }
+
+        guard let preflightDemandDeadline, preflightDemandDeadline > now else {
+            return 0
+        }
+
+        return 1
+    }
 }
 
 final class ReframeCameraStreamSource: NSObject, CMIOExtensionStreamSource {
@@ -356,7 +480,9 @@ final class ReframeCameraStreamSource: NSObject, CMIOExtensionStreamSource {
     }
 
     func authorizedToStartStream(for client: CMIOExtensionClient) -> Bool {
-        true
+        logger.info("authorizedToStartStream from \(describe(client: client), privacy: .public)")
+        (device.source as? ReframeCameraDeviceSource)?.noteClientAuthorizedToStartStream()
+        return true
     }
 
     func startStream() throws {
@@ -386,19 +512,28 @@ final class ReframeCameraProviderSource: NSObject, CMIOExtensionProviderSource {
     private let deviceSource = ReframeCameraDeviceSource()
 
     init(clientQueue: DispatchQueue?) {
+        ExtensionBootstrapTrace.log("provider-source: init started")
         super.init()
 
         provider = CMIOExtensionProvider(source: self, clientQueue: clientQueue)
+        ExtensionBootstrapTrace.log("provider-source: created CMIOExtensionProvider")
         do {
             try provider.addDevice(deviceSource.device)
+            ExtensionBootstrapTrace.log("provider-source: added device to provider")
         } catch {
+            ExtensionBootstrapTrace.log("provider-source: failed to add device: \(error.localizedDescription)")
             fatalError("Failed to add CMIO device: \(error.localizedDescription)")
         }
     }
 
-    func connect(to client: CMIOExtensionClient) throws {}
+    func connect(to client: CMIOExtensionClient) throws {
+        logger.info("Provider connect from \(describe(client: client), privacy: .public)")
+    }
 
-    func disconnect(from client: CMIOExtensionClient) {}
+    func disconnect(from client: CMIOExtensionClient) {
+        logger.info("Provider disconnect from \(describe(client: client), privacy: .public)")
+        deviceSource.noteClientDisconnected()
+    }
 
     var availableProperties: Set<CMIOExtensionProperty> {
         [.providerManufacturer]

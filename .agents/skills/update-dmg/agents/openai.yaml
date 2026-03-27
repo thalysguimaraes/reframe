@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update DMG"
+  short_description: "Publish the latest release DMG"
+  default_prompt: "Use $update-dmg to generate a fresh Reframe DMG and update the GitHub release asset so downloads serve the newest installer."

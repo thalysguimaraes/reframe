@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local Test"
+  short_description: "Build and install Reframe locally"
+  default_prompt: "Use $local-test to build the latest Reframe bundle and replace /Applications/Reframe.app for manual testing."

@@ -19,6 +19,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         bindModel(model)
         refreshPresentationOptions()
+        if let window = resolvedMainWindow() {
+            model.setMainWindowVisible(window.isVisible)
+        }
         isConfigured = true
     }
 
@@ -28,6 +31,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         mainWindow = window
         window.delegate = self
         window.isReleasedWhenClosed = false
+        model?.setMainWindowVisible(window.isVisible)
 
         if window.title.isEmpty {
             window.title = "Reframe"
@@ -70,11 +74,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         sender.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
-
-        // Stop pipeline if popover is also closed — no UI needs the camera.
-        if !menuBarController.isPopoverVisible {
-            model?.stopPreview()
-        }
+        model?.setMainWindowVisible(false)
         return false
     }
 
@@ -82,9 +82,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let window = resolvedMainWindow() else { return }
 
         NSApp.setActivationPolicy(.regular)
-
-        // Restart pipeline when the window comes back.
-        model?.startPreviewIfNeeded()
+        model?.setMainWindowVisible(true)
 
         if window.isMiniaturized {
             window.deminiaturize(nil)
@@ -95,6 +93,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.makeKeyAndOrderFront(nil)
             window.orderFrontRegardless()
         }
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === resolvedMainWindow() else { return }
+        model?.setMainWindowVisible(false)
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === resolvedMainWindow() else { return }
+        model?.setMainWindowVisible(false)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, window === resolvedMainWindow() else { return }
+        model?.setMainWindowVisible(true)
     }
 
     private func bindModel(_ model: AppModel) {
@@ -203,7 +216,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSWindowDelegate {
 }
 
 @MainActor
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSPopoverDelegate {
     private weak var model: AppModel?
     private var onExpand: (() -> Void)?
     private var statusItem: NSStatusItem?
@@ -214,6 +227,7 @@ final class MenuBarController: NSObject {
         self.model = model
         self.onExpand = onExpand
 
+        popover.delegate = self
         popover.behavior = .transient
         popover.animates = true
         popover.contentSize = NSSize(width: 320, height: 500)
@@ -273,19 +287,16 @@ final class MenuBarController: NSObject {
 
         if popover.isShown {
             closePopover()
-            // Stop pipeline if main window is also not visible.
-            let mainWindowVisible = NSApp.windows.contains(where: { $0.canBecomeMain && $0.isVisible })
-            if !mainWindowVisible {
-                model?.stopPreview()
-            }
             return
         }
 
-        // Start pipeline when opening popover.
-        model?.startPreviewIfNeeded()
-
+        model?.setMenuBarPopoverVisible(true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.becomeKey()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        model?.setMenuBarPopoverVisible(false)
     }
 
     private func installStatusItemIfNeeded() {
@@ -303,6 +314,7 @@ final class MenuBarController: NSObject {
 
     private func removeStatusItem() {
         closePopover()
+        model?.setMenuBarPopoverVisible(false)
 
         guard let statusItem else { return }
         NSStatusBar.system.removeStatusItem(statusItem)

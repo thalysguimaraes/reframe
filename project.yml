@@ -6,7 +6,7 @@ options:
     macOS: "13.0"
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 6
+    CURRENT_PROJECT_VERSION: 10
     MARKETING_VERSION: 0.1.0
     VERSIONING_SYSTEM: apple-generic
     SWIFT_VERSION: 6.0

@@ -2,8 +2,11 @@ import AutoFrameCore
 @preconcurrency import AVFoundation
 import AppKit
 import Foundation
+import os.log
 import SwiftUI
 import UniformTypeIdentifiers
+
+private let captureDemandLogger = Logger(subsystem: "dev.autoframe.reframe.app", category: "capture-demand")
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -53,6 +56,7 @@ final class AppModel: ObservableObject {
     private let settingsStore = SharedSettingsStore.shared
     private let statsStore = SharedStatsStore.shared
     private let videoFrameStore = SharedVideoFrameStore.shared
+    private let virtualCameraDemandStore = SharedVirtualCameraDemandStore.shared
     private let liveSettingsSnapshot: LiveSettingsSnapshot
     private let deadZone: Double
     private let performancePolicy: PerformancePolicy
@@ -62,9 +66,19 @@ final class AppModel: ObservableObject {
     private var pipelineOperationID = 0
     private var statsRefreshTimer: Timer?
     private var previewSignalTimer: Timer?
+    private var captureDemandPoller: DispatchSourceTimer?
+    private var captureDemandObservation: SharedVirtualCameraDemandObservation?
     private var previewSignalMonitor = PreviewSignalMonitor()
     private var lastStatsUIUpdateTime: CFAbsoluteTime = .zero
     private var lastFacePresence: Bool?
+    private var isMainWindowVisible = false
+    private var isMenuBarPopoverVisible = false
+    private var hasActiveVirtualCameraConsumers = false
+    private var isPreviewRunning = false
+    private var isStoppingPreview = false
+    private var isRequestingCameraAccess = false
+    private var hasScheduledInitialAppearanceSetup = false
+    private var hasLoggedFirstProcessedFrameForCurrentRun = false
 
     init() {
         let settings = settingsStore.load()
@@ -385,6 +399,17 @@ final class AppModel: ObservableObject {
     }
 
     func onAppear() {
+        guard !hasScheduledInitialAppearanceSetup else { return }
+        hasScheduledInitialAppearanceSetup = true
+
+        // Defer startup mutations until the current SwiftUI update pass completes.
+        DispatchQueue.main.async { [weak self] in
+            self?.performInitialAppearanceSetup()
+        }
+    }
+
+    private func performInitialAppearanceSetup() {
+        captureDemandLogger.info("Initial appearance setup started.")
         startStatsRefreshTimer()
         startPreviewSignalTimer()
 
@@ -393,17 +418,22 @@ final class AppModel: ObservableObject {
 
         if hasCompletedOnboarding {
             showingOnboarding = false
-            requestCameraAccessAndStartPreview()
+            requestCameraAccessAndSyncCaptureDemand(
+                promptForCameraAccessIfNeeded: isMainWindowVisible || isMenuBarPopoverVisible
+            )
         } else {
             showingOnboarding = true
             if cameraAuthorizationStatus == .authorized {
-                startPreviewIfNeeded()
+                syncCaptureDemand()
             } else if cameraAuthorizationStatus == .denied || cameraAuthorizationStatus == .restricted {
                 statusMessage = "Camera access denied."
             } else {
                 statusMessage = "Welcome to Reframe."
             }
         }
+
+        startCaptureDemandTimer()
+        syncCaptureDemand()
     }
 
     func installExtension() {
@@ -428,6 +458,7 @@ final class AppModel: ObservableObject {
     }
 
     func startPreview() {
+        captureDemandLogger.info("Starting preview for camera \(self.selectedCameraID ?? "none", privacy: .public).")
         refreshCameras()
         persistSettings()
         hasPreviewFrame = false
@@ -450,14 +481,20 @@ final class AppModel: ObservableObject {
     }
 
     func stopPreview() {
+        guard !isStoppingPreview else { return }
+
         pipelineOperationTask?.cancel()
         pipelineOperationTask = nil
         pipelineActivity = nil
+        isStoppingPreview = true
 
         guard let pipeline else {
+            isPreviewRunning = false
+            isStoppingPreview = false
             previewStream.reset()
             videoFrameStore.clear()
             clearPreviewSignalMonitoring()
+            clearPublishedStats()
             hasPreviewFrame = false
             previewFPS = 0
             statusMessage = "Preview stopped."
@@ -469,9 +506,12 @@ final class AppModel: ObservableObject {
 
             await MainActor.run {
                 guard let self else { return }
+                self.isPreviewRunning = false
+                self.isStoppingPreview = false
                 self.previewStream.reset()
                 self.videoFrameStore.clear()
                 self.clearPreviewSignalMonitoring()
+                self.clearPublishedStats()
                 self.hasPreviewFrame = false
                 self.previewFPS = 0
                 self.statusMessage = "Preview stopped."
@@ -511,32 +551,12 @@ final class AppModel: ObservableObject {
         extensionManager.refreshStatus()
 
         if cameraAuthorizationStatus == .authorized {
-            startPreviewIfNeeded()
+            syncCaptureDemand()
         }
     }
 
     func requestCameraAccessFromOnboarding() {
-        refreshCameraAuthorizationStatus()
-
-        switch cameraAuthorizationStatus {
-        case .authorized:
-            startPreviewIfNeeded()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                Task { @MainActor in
-                    self.refreshCameraAuthorizationStatus()
-                    if granted {
-                        self.startPreviewIfNeeded()
-                    } else {
-                        self.clearPreviewSignalMonitoring()
-                        self.statusMessage = "Camera access denied."
-                    }
-                }
-            }
-        default:
-            clearPreviewSignalMonitoring()
-            statusMessage = "Camera access denied."
-        }
+        requestCameraAccessAndSyncCaptureDemand(promptForCameraAccessIfNeeded: true)
     }
 
     func completeOnboarding() {
@@ -563,9 +583,38 @@ final class AppModel: ObservableObject {
     }
 
     func startPreviewIfNeeded() {
-        guard cameraAuthorizationStatus == .authorized else { return }
-        guard pipelineActivity == nil, !hasPreviewFrame else { return }
+        guard self.cameraAuthorizationStatus == .authorized else {
+            captureDemandLogger.info("Skipping preview start because camera authorization is \(String(describing: self.cameraAuthorizationStatus), privacy: .public).")
+            return
+        }
+        guard self.pipelineActivity == nil, !self.isPreviewRunning, !self.isStoppingPreview else {
+            captureDemandLogger.debug(
+                "Skipping preview start because activity=\(String(describing: self.pipelineActivity), privacy: .public) previewRunning=\(self.isPreviewRunning, privacy: .public) stopping=\(self.isStoppingPreview, privacy: .public)."
+            )
+            return
+        }
+        captureDemandLogger.info("startPreviewIfNeeded proceeding with externalDemand=\(self.hasActiveVirtualCameraConsumers, privacy: .public) mainWindowVisible=\(self.isMainWindowVisible, privacy: .public) menuPopoverVisible=\(self.isMenuBarPopoverVisible, privacy: .public).")
         startPreview()
+    }
+
+    func setMainWindowVisible(_ isVisible: Bool) {
+        guard isMainWindowVisible != isVisible else { return }
+        isMainWindowVisible = isVisible
+        if isVisible {
+            requestCameraAccessAndSyncCaptureDemand(promptForCameraAccessIfNeeded: true)
+        } else {
+            syncCaptureDemand()
+        }
+    }
+
+    func setMenuBarPopoverVisible(_ isVisible: Bool) {
+        guard isMenuBarPopoverVisible != isVisible else { return }
+        isMenuBarPopoverVisible = isVisible
+        if isVisible {
+            requestCameraAccessAndSyncCaptureDemand(promptForCameraAccessIfNeeded: true)
+        } else {
+            syncCaptureDemand()
+        }
     }
 
     func switchToSuggestedCamera() {
@@ -595,18 +644,28 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func requestCameraAccessAndStartPreview() {
+    private func requestCameraAccessAndSyncCaptureDemand(promptForCameraAccessIfNeeded: Bool) {
         refreshCameraAuthorizationStatus()
 
         switch cameraAuthorizationStatus {
         case .authorized:
-            startPreviewIfNeeded()
+            syncCaptureDemand()
         case .notDetermined:
+            guard promptForCameraAccessIfNeeded else {
+                captureDemandLogger.info("Capture demand present but camera access is not determined; waiting for explicit UI-triggered authorization.")
+                return
+            }
+            guard !isRequestingCameraAccess else {
+                captureDemandLogger.debug("Skipping duplicate camera access request while one is already in flight.")
+                return
+            }
+            isRequestingCameraAccess = true
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 Task { @MainActor in
+                    self.isRequestingCameraAccess = false
                     self.refreshCameraAuthorizationStatus()
                     if granted {
-                        self.startPreviewIfNeeded()
+                        self.syncCaptureDemand()
                     } else {
                         self.clearPreviewSignalMonitoring()
                         self.statusMessage = "Camera access denied."
@@ -642,6 +701,31 @@ final class AppModel: ObservableObject {
         previewSignalTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.evaluatePreviewSignal()
+            }
+        }
+    }
+
+    private func startCaptureDemandTimer() {
+        startCaptureDemandObservation()
+        guard captureDemandPoller == nil else { return }
+
+        captureDemandLogger.info("Starting capture-demand poller.")
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + .milliseconds(100), repeating: .milliseconds(100), leeway: .milliseconds(20))
+        timer.setEventHandler { [weak self] in
+            self?.refreshVirtualCameraDemandAndSync()
+        }
+        captureDemandPoller = timer
+        timer.resume()
+    }
+
+    private func startCaptureDemandObservation() {
+        guard captureDemandObservation == nil else { return }
+
+        captureDemandLogger.info("Starting capture-demand observation.")
+        captureDemandObservation = virtualCameraDemandStore.observeChanges(queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.refreshVirtualCameraDemandAndSync()
             }
         }
     }
@@ -687,6 +771,12 @@ final class AppModel: ObservableObject {
 
             Task { @MainActor in
                 guard let self else { return }
+                if !self.hasLoggedFirstProcessedFrameForCurrentRun {
+                    self.hasLoggedFirstProcessedFrameForCurrentRun = true
+                    captureDemandLogger.info(
+                        "Received first processed frame. source=\(frame.statistics.sourceWidth, privacy: .public)x\(frame.statistics.sourceHeight, privacy: .public) output=\(frame.statistics.outputWidth, privacy: .public)x\(frame.statistics.outputHeight, privacy: .public)."
+                    )
+                }
                 let normalizedFace: CGRect? = {
                     guard let face = frame.detectedFace else { return nil }
                     let crop = frame.cropRect
@@ -715,9 +805,11 @@ final class AppModel: ObservableObject {
         pipelineOperationID += 1
         let operationID = pipelineOperationID
         let pipeline = makePipelineIfNeeded()
+        hasLoggedFirstProcessedFrameForCurrentRun = false
 
         pipelineActivity = activity
         statusMessage = activity.statusMessage
+        captureDemandLogger.info("Running pipeline activity \(activity.title, privacy: .public).")
 
         if clearsPreview {
             resetPreviewForAwaitingFrames()
@@ -729,6 +821,7 @@ final class AppModel: ObservableObject {
                 try await operation(pipeline)
                 await MainActor.run {
                     guard let self, self.pipelineOperationID == operationID else { return }
+                    self.isPreviewRunning = true
                     self.pipelineActivity = nil
                     if self.hasPreviewFrame {
                         self.previewState = .live
@@ -742,6 +835,9 @@ final class AppModel: ObservableObject {
             } catch {
                 await MainActor.run {
                     guard let self, self.pipelineOperationID == operationID else { return }
+                    if activity == .starting {
+                        self.isPreviewRunning = false
+                    }
                     self.pipelineActivity = nil
                     self.clearPreviewSignalMonitoring()
                     self.statusMessage = "Preview failed: \(error)"
@@ -819,6 +915,60 @@ final class AppModel: ObservableObject {
 
     private var selectedCameraStatusName: String {
         selectedCamera?.localizedName ?? "the selected camera"
+    }
+
+    private var hasActiveCaptureDemand: Bool {
+        isMainWindowVisible || isMenuBarPopoverVisible || hasActiveVirtualCameraConsumers
+    }
+
+    private func refreshVirtualCameraDemandAndSync() {
+        let hasActiveConsumers = virtualCameraDemandStore.hasActiveConsumers()
+        let demandChanged = hasActiveVirtualCameraConsumers != hasActiveConsumers
+        hasActiveVirtualCameraConsumers = hasActiveConsumers
+
+        let shouldRetryForExternalDemand = hasActiveConsumers && pipelineActivity == nil && !isPreviewRunning && !isStoppingPreview
+        guard demandChanged || shouldRetryForExternalDemand else { return }
+        captureDemandLogger.info(
+            "Capture demand refreshed. externalConsumers=\(hasActiveConsumers, privacy: .public) mainWindowVisible=\(self.isMainWindowVisible, privacy: .public) menuPopoverVisible=\(self.isMenuBarPopoverVisible, privacy: .public) previewRunning=\(self.isPreviewRunning, privacy: .public) stopping=\(self.isStoppingPreview, privacy: .public) activity=\(String(describing: self.pipelineActivity), privacy: .public)."
+        )
+        syncCaptureDemand()
+    }
+
+    private func syncCaptureDemand() {
+        refreshCameraAuthorizationStatus()
+
+        if hasActiveCaptureDemand {
+            guard cameraAuthorizationStatus == .authorized else {
+                if cameraAuthorizationStatus == .notDetermined {
+                    captureDemandLogger.info("Capture demand active, but camera access is not determined. Preview will remain idle until authorization is granted.")
+                } else {
+                    captureDemandLogger.info("Capture demand active, but camera access is unavailable. Preview will stay stopped.")
+                    clearPreviewSignalMonitoring()
+                    statusMessage = "Camera access denied."
+                }
+                stopPreviewIfNeeded()
+                return
+            }
+
+            captureDemandLogger.info("Capture demand active. Ensuring preview is running.")
+            startPreviewIfNeeded()
+            return
+        }
+
+        captureDemandLogger.info("Capture demand inactive. Stopping preview if needed.")
+        stopPreviewIfNeeded()
+    }
+
+    private func stopPreviewIfNeeded() {
+        guard !isStoppingPreview else { return }
+        guard isPreviewRunning || pipelineActivity != nil || hasPreviewFrame else { return }
+        stopPreview()
+    }
+
+    private func clearPublishedStats() {
+        let clearedStats = FrameStatistics.empty
+        stats = clearedStats
+        statsStore.save(clearedStats, minimumInterval: 0)
     }
 }
 
